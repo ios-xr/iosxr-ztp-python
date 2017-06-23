@@ -1,0 +1,45 @@
+# DHCP Pools
+#################################
+# localpool
+#################################
+
+
+######### Network 11.11.11.0/24 ################
+shared-network 11-11-11-0 {
+
+####### Pools ##############
+	subnet 11.11.11.0 netmask 255.255.255.0 {
+		option subnet-mask 255.255.255.0;
+		option broadcast-address 11.11.11.255;
+		option routers 11.11.11.2;
+		option domain-name-servers 11.11.11.2;
+		option domain-name "cisco.local";
+		# DDNS statements
+  		ddns-domainname "cisco.local.";
+		# use this domain name to update A RR (forward map)
+  		ddns-rev-domainname "in-addr.arpa.";
+  		# use this domain name to update PTR RR (reverse map)
+
+         }
+
+######## Matching Classes ##########
+
+         class "ncs5508" {
+             match if (substring(option dhcp-client-identifier,0,11) = "FGE194714QS"); 
+         }
+
+
+         pool {
+                 allow members of "ncs5508";
+		 range 11.11.11.42 11.11.11.50;
+		 next-server 192.1.1.1;
+                 if exists user-class and option user-class = "iPXE" {
+                     filename = "http://11.11.11.2:9090/ncs5500-mini-x.iso";
+                 }
+                 if exists user-class and option user-class = "exr-config" {
+                     filename = "http://11.11.11.2:9090/scripts/exhaustive_ztp_script.py";
+                 }
+                 ddns-hostname "ncs-5508-local";
+                 option routers 11.11.11.2;
+        }
+}
