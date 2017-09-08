@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 """
-   author: akshshar@cisco.com
+  author: akshshar@cisco.com
 
-   ztp_helper.py
- 
-   ZTP helper for Python
- 
-   Copyright (c) 2017 by cisco Systems, Inc.
-   All rights reserved.
- 
- """
+  ztp_helper.py
+
+  ZTP helper for Python
+
+  Copyright (c) 2017 by cisco Systems, Inc.
+  All rights reserved.
+
+"""
 
 
 import os, sys, subprocess
@@ -21,11 +21,6 @@ libc = cdll.LoadLibrary('libc.so.6')
 _setns = libc.setns
 
 CLONE_NEWNET = 0x40000000
-NODE_TYPE = ["Line Card",
-             "LC",
-             "Route Processor",
-             "Route Switch Processor"]
-
 
 class ZtpHelpers(object):
 
@@ -292,6 +287,7 @@ class ZtpHelpers(object):
         return {"status" : status, "output" : output}
 
 
+
     def xrapply(self, filename=None, reason=None):
         """Apply Configuration to XR using a file 
           
@@ -428,212 +424,67 @@ class ZtpHelpers(object):
             return {"status": status, "output" : output}
 
 
-    def all_nodes_ready(self):
-        """ Method to check if all nodes on the chassis are ready 
-            :return: Dictionary specifying success/error and an associated message
-                     {'status': 'success/error',
-                      'output':  True/False in case of success, 
-                                 error mesage in case of error}
-            :rtype: dict
+    def xrreplace(self, filename=None):
+        """Replace XR Configuration using a file 
+          
+           :param file: Filepath for a config file
+                        with the following structure: 
+
+                        !
+                        XR config commands
+                        !
+                        end
+           :type filename: str
+           :return: Dictionary specifying the effect of the config change
+                     { 'status' : 'error/success', 'output': 'exec command based on status'}
+                     In case of Error:  'output' = 'show configuration failed' 
+                     In case of Success: 'output' = 'show configuration commit changes last 1'
+           :rtype: dict 
         """
 
-        show_inventory = self.xrcmd({"exec_cmd" : "show inventory | e PORT | i NAME:"})
-        node_dict = {}
 
-        if show_inventory["status"] == "success":
-            try:
-                for line in show_inventory["output"]:
-                    str = '{'+line+'}'
-                    str=str.replace("NAME", "\"NAME\"")
-                    str=str.replace("DESCR", "\"DESCR\"")
-                    if any(type in json.loads(str)['DESCR'] for type in NODE_TYPE):
-                        node_dict[(json.loads(str)['NAME'])] = "inactive"
-                        if self.debug:
-                            self.logger.debug("Fetched Node inventory for the system")
-                            self.logger.debug(node_dict)
-            except Exception as e:
-                if self.debug:
-                    self.logger.debug("Error while fetching the node list from inventory")
-                    self.logger.debug(e)
-                return {"status": "error", "output": e }
-        
-              
-            show_platform = self.xrcmd({"exec_cmd" : "show platform"})
+        if filename is None:
+            return {"status" : "error", "output": "No config file provided for xrreplace"}
 
-            if show_platform["status"] == "success":
-                try:
-                    for node in node_dict:
-                        for line in show_platform["output"]:
-                            if node+'/CPU' in line.split()[0]:
-                                node_state =  line.split()
-                                xr_state = ' '.join(node_state[2:])
-                                if 'IOS XR RUN' in xr_state:
-                                    node_dict[node] = "active"
-                except Exception as e:
-                    if self.debug:
-                        self.logger.debug("Error while fetching the XR status on node")
-                        self.logger.debug(e)
-                    return {"status": "error", "output": e }
-            
+        status = "success"
+
+        try:
+            if self.debug:
+                with open(filename, 'r') as config_file:
+                    data=config_file.read()
+                self.logger.debug("Config File content to be applied %s" % data)
+        except Exception as e:
+            return {"status" : "error" , "output" : "Invalid config file provided"}
+
+        cmd = "source /pkg/bin/ztp_helper.sh && xrreplace " + filename
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+        out, err = process.communicate()
+
+        # Check if the commit failed
+
+        if process.returncode:
+            ## Config commit failed.
+            status = "error"
+            exec_cmd = "show configuration failed"
+            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
+            if config_failed["status"] == "error":
+                output = "Failed to fetch config failed output"
             else:
-                if self.debug:
-                    self.logger.debug("Failed to get the output of show platform") 
-                return {"status": "error", "output": "Failed to get the output of show platform"}
-            
+                output = config_failed["output"]
+
+            if self.debug:
+                self.logger.debug("Config replace through file failed, output = %s" % output)
+            return  {"status": status, "output": output}
         else:
-            if self.debug:
-                self.logger.debug("Failed to get the output of show inventory")
-            return {"status": "error", "output": "Failed to get the output of show inventory"}
-                
-
-        if self.debug:
-            self.logger.debug("Updated the IOS-XR state of each node")
-            self.logger.debug(node_dict)
-
-        if all(state == "active" for state in node_dict.values()):
-            return {"status" : "success", "output": True}
-        else:
-            return {"status" : "success", "output": False}
-
-
-    def install_xr_package(self, package_url):
-        """ Method to install XR packages through initial download followed
-            by local install and cleanup
-            :param package_url: Complete URL of the package to be downloaded
-                                and installed
-            :type package_url: str
-            :return: Dictionary specifying success/error and an associated message
-                     {'status': 'success/error',
-                      'output': 'success/error message',
-                      'warning': 'warning if cleanup fails'}
-            :rtype: dict
-        """
-
-        result = {"status": "error", "output" : "Installation of package  failed!"}
-
-        # First download the package to the /misc/app_host/scratch folder
-
-        output = self.download_file(package_url, destination_folder="/misc/app_host/scratch")
-
-        if output["status"] == "error":
-            if self.debug:
-                self.logger.debug("Package Download failed, aborting installation process")
-            self.syslogger.info("Package Download failed, aborting installation process")
-
-            return result
-
-        elif output["status"] == "success":
-            if self.debug:
-                self.logger.debug("Package Download complete, starting installation process")
-                    
-            self.syslogger.info("Package Download complete, starting installation process")  
-            
-            rpm_name = output["filename"]
-            rpm_location = output["folder"]
-            rpm_path = os.path.join(rpm_location, rpm_name)
-
-            ## Query the downloaded RPM to figure out the package name
-            cmd = 'rpm -qp --qf "%{NAME}\n"  ' + str(rpm_path)
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-            out, err = process.communicate()
-   
-            if process.returncode:
-                if self.debug:
-                    self.logger.debug("Failed to get the Package name from downloaded RPM, aborting installation process")
-                self.syslogger.info("Failed to get the Package name from downloaded RPM, aborting installation process")
-
-                result["status"] = "error"
-                result["output"] = "Failed to get the package name from RPM %s" % rpm_name        
-                
-                # Cleanup
-                try:
-                    os.remove(rpm_path)
-                except OSError:
-                    result["warning"] = "failed to remove RPM from path: "+str(rpm_path)     
-                return result
-
+            ## Config commit successful. Let's return the last config change
+            exec_cmd = "show configuration commit changes last 1"
+            config_change = self.xrcmd({"exec_cmd": exec_cmd})
+            if config_change["status"] == "error":
+                output = "Failed to fetch last config change"
             else:
-                package_name = out.rstrip()
-                # Now run the install command in XR exec to install package
+                output = config_change["output"]
 
-                install_update = self.xrcmd({"exec_cmd" : "install update source %s %s" % (rpm_location, rpm_name)}) 
-
-
-                if install_update["status"] == "success":
-                    t_end = time.time() + 60 * 5
-                    while time.time() < t_end:
-
-                        install_active = self.xrcmd({"exec_cmd" : "show install active"})
-               
-                        if install_active["status"] == "error":
-                            result["status"] = "error"
-                            result["output"] = "Failed to fetch output of show install active -Installation of package %s failed" % package_name
-                            # Cleanup
-                            try:
-                                os.remove(rpm_path)
-                            except OSError:
-                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)                                           
-
-                            return result
-
-                        # Fetch the number of active nodes on the chassis
-                        show_active_nodes = self.xrcmd({"exec_cmd" : "show platform vm"})
-                        if show_active_nodes["status"] == "error":
-                            result["status"] = "error"
-                            result["output"] = "Failed to fetch output of show platform vm -Installation of package %s failed" % package_name
-                            # Cleanup
-                            try:
-                                os.remove(rpm_path)
-                            except OSError:
-                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)                                           
-
-                            return result
-
-                        active_node_list = show_active_nodes["output"]
-                        active_nodes = len(active_node_list[2:])  
-                  
-                        # Since package must get installed on every node, get the count of number of installations for the package
-                        install_count = ''.join(install_active["output"]).count(package_name)
-                        # Install count must match the active node count
-
-                        if install_count == active_nodes:
-                            if self.debug:
-                                self.logger.debug("Installation of %s package successful" % package_name)
-                            self.syslogger.info("Installation of %s package successsful" % package_name)
- 
-                            result["status"] = "success" 
-                            result["output"] = "Installation of %s package successful" % package_name
-
-                            # Cleanup
-                            try:
-                                os.remove(rpm_path)
-                            except OSError:
-                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)   
-
-                            break
-                        else:
-                            # Sleep for 10 seconds before checking again
-                            time.sleep(10)
-                            if self.debug:
-                                self.logger.debug("Waiting for installation of %s package to complete" % package_name)
-                            self.syslogger.info("Waiting for installation of %s package to complete" % package_name)
-                    
-                    if result["status"] == "error":
-                        result["output"] =  "Installation of %s package timed out" % package_name
-                        # Cleanup
-                        try:
-                            os.remove(rpm_path)
-                        except OSError:
-                            result["warning"] = "failed to remove RPM from path: "+str(rpm_path)   
-            
-
-                    return result
-                else:
-                    result["status"] = "error" 
-                    result["output"] = "Failed to execute install update command for package: %s" % package_name
-                    # Cleanup
-                    try:
-                        os.remove(rpm_path)
-                    except OSError:
-                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)   
-                    return result
+            if self.debug:
+                self.logger.debug("Config replace through file successful, last change = %s" % output)
+            return {"status": status, "output" : output}
