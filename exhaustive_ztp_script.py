@@ -6,6 +6,26 @@ from ztp_helper import ZtpHelpers
 import json, tempfile, time
 from time import gmtime, strftime
 
+ROOT_USER = "vagrant"
+ROOT_USER_CREDENTIALS = "$1$FzMk$Y5G3Cv0H./q0fG.LGyIJS1" 
+ROOT_USER_CLEARTEXT = "vagrant"
+SERVER_URL = "http://11.11.11.2:9090/"
+SERVER_URL_PACKAGES = SERVER_URL+"packages/"
+SERVER_URL_SCRIPTS = SERVER_URL+"scripts/"
+SERVER_URL_CONFIGS = SERVER_URL+"configs/"
+CONFIG_FILE = "ncs5508_vrf_test.config"
+K9SEC_PACKAGE = "ncs5500-k9sec-3.2.0.0-r622508I.x86_64.rpm"
+MGBL_PACKAGE = "ncs5500-mgbl-3.0.0.0-r622508I.x86_64.rpm"
+SYSLOG_SERVER = "11.11.11.2"
+SYSLOG_PORT = 514
+SYSLOG_LOCAL_FILE = "/root/ztp_python.log"
+CRON_SCRIPT = "cron_action.py"
+
+NODE_TYPE = ["Line Card",
+             "LC",
+             "Route Processor",
+             "Route Switch Processor"]
+
 class ZtpFunctions(ZtpHelpers):
 
     def set_root_user(self):
@@ -19,12 +39,12 @@ class ZtpFunctions(ZtpHelpers):
            :rtype: dict
         """
         config = """ !
-                     username netops
+                     username %s 
                      group root-lr
                      group cisco-support
-                     secret 5 $1$7kTu$zjrgqbgW08vEXsYzUycXw1
+                     secret 5 %s 
                      !
-                     end"""
+                     end""" % (ROOT_USER, ROOT_USER_CREDENTIALS)
 
 
 
@@ -40,6 +60,143 @@ class ZtpFunctions(ZtpHelpers):
 
         return result
 
+    def xrreplace(self, filename=None):
+        """Replace XR Configuration using a file 
+          
+           :param file: Filepath for a config file
+                        with the following structure: 
+
+                        !
+                        XR config commands
+                        !
+                        end
+           :type filename: str
+           :return: Dictionary specifying the effect of the config change
+                     { 'status' : 'error/success', 'output': 'exec command based on status'}
+                     In case of Error:  'output' = 'show configuration failed' 
+                     In case of Success: 'output' = 'show configuration commit changes last 1'
+           :rtype: dict 
+        """
+
+
+        if filename is None:
+            return {"status" : "error", "output": "No config file provided for xrreplace"}
+
+        status = "success"
+
+        try:
+            if self.debug:
+                with open(filename, 'r') as config_file:
+                    data=config_file.read()
+                self.logger.debug("Config File content to be applied %s" % data)
+        except Exception as e:
+            return {"status" : "error" , "output" : "Invalid config file provided"}
+
+        cmd = "source /pkg/bin/ztp_helper.sh && xrreplace " + filename
+
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+        out, err = process.communicate()
+
+        # Check if the commit failed
+
+        if process.returncode:
+            ## Config commit failed.
+            status = "error"
+            exec_cmd = "show configuration failed"
+            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
+            if config_failed["status"] == "error":
+                output = "Failed to fetch config failed output"
+            else:
+                output = config_failed["output"]
+
+            if self.debug:
+                self.logger.debug("Config replace through file failed, output = %s" % output)
+            return  {"status": status, "output": output}
+        else:
+            ## Config commit successful. Let's return the last config change
+            exec_cmd = "show configuration commit changes last 1"
+            config_change = self.xrcmd({"exec_cmd": exec_cmd})
+            if config_change["status"] == "error":
+                output = "Failed to fetch last config change"
+            else:
+                output = config_change["output"]
+
+            if self.debug:
+                self.logger.debug("Config replace through file successful, last change = %s" % output)
+            return {"status": status, "output" : output}
+
+
+
+    def all_nodes_ready(self):
+        """ Method to check if all nodes on the chassis are ready 
+            :return: Dictionary specifying success/error and an associated message
+                     {'status': 'success/error',
+                      'output':  True/False in case of success, 
+                                 error mesage in case of error}
+            :rtype: dict
+        """
+
+        show_inventory = self.xrcmd({"exec_cmd" : "show inventory | e PORT | i NAME:"})
+        node_dict = {}
+
+        if show_inventory["status"] == "success":
+            try:
+                for line in show_inventory["output"]:
+                    if not any(tag in line for tag in ["NAME", "DESCR"]):
+                        continue
+                    str = '{'+line+'}'
+                    str=str.replace("NAME", "\"NAME\"")
+                    str=str.replace("DESCR", "\"DESCR\"")
+                    if any(type in json.loads(str)['DESCR'] for type in NODE_TYPE):
+                        node_dict[(json.loads(str)['NAME'])] = "inactive"
+                        if self.debug:
+                            self.logger.debug("Fetched Node inventory for the system")
+                            self.logger.debug(node_dict)
+            except Exception as e:
+                if self.debug:
+                    self.logger.debug("Error while fetching the node list from inventory")
+                    self.logger.debug(e)
+                return {"status": "error", "output": e }
+
+
+            show_platform = self.xrcmd({"exec_cmd" : "show platform"})
+
+            if show_platform["status"] == "success":
+                try:
+                    for node in node_dict:
+                        for line in show_platform["output"]:
+                            if node+'/CPU' in line.split()[0]:
+                                node_state =  line.split()
+                                xr_state = ' '.join(node_state[2:])
+                                if 'IOS XR RUN' in xr_state:
+                                    node_dict[node] = "active"
+                except Exception as e:
+                    if self.debug:
+                        self.logger.debug("Error while fetching the XR status on node")
+                        self.logger.debug(e)
+                    return {"status": "error", "output": e }
+
+            else:
+                if self.debug:
+                    self.logger.debug("Failed to get the output of show platform")
+                return {"status": "error", "output": "Failed to get the output of show platform"}
+
+        else:
+            if self.debug:
+                self.logger.debug("Failed to get the output of show inventory")
+            return {"status": "error", "output": "Failed to get the output of show inventory"}
+
+
+        if self.debug:
+            self.logger.debug("Updated the IOS-XR state of each node")
+            self.logger.debug(node_dict)
+
+        if all(state == "active" for state in node_dict.values()):
+            return {"status" : "success", "output": True}
+        else:
+            return {"status" : "success", "output": False}
+
+
 
     def wait_for_nodes(self, duration=600):
         """User defined method in Child Class
@@ -49,8 +206,6 @@ class ZtpFunctions(ZtpHelpers):
  
            Use this method to wait for the system to be ready
            before installing packages or applying configuration.
-
-           Leverages all_nodes_ready() method in ZtpHelpers Class.
 
            :param duration: Duration for which the script must
                             wait for nodes to be up.
@@ -85,6 +240,368 @@ class ZtpFunctions(ZtpHelpers):
         if not nodes_up:
             self.syslogger.info("All nodes did not come up, exiting")
             return nodes_up
+
+
+
+
+    def install_xr_update(self, package_url):
+        """ Method to install XR packages through initial download followed
+            by local install and cleanup
+            Uses install update utility
+            :param package_url: Complete URL of the package to be downloaded
+                                and installed
+            :type package_url: str
+            :return: Dictionary specifying success/error and an associated message
+                     {'status': 'success/error',
+                      'output': 'success/error message',
+                      'warning': 'warning if cleanup fails'}
+            :rtype: dict
+        """
+
+        result = {"status": "error", "output" : "Installation of package  failed!"}
+
+        # First download the package to the /misc/app_host/scratch folder
+
+        output = self.download_file(package_url, destination_folder="/misc/app_host/scratch")
+
+        if output["status"] == "error":
+            if self.debug:
+                self.logger.debug("Package Download failed, aborting installation process")
+            self.syslogger.info("Package Download failed, aborting installation process")
+
+            return result
+
+        elif output["status"] == "success":
+            if self.debug:
+                self.logger.debug("Package Download complete, starting installation process")
+
+            self.syslogger.info("Package Download complete, starting installation process")
+
+            rpm_name = output["filename"]
+            rpm_location = output["folder"]
+            rpm_path = os.path.join(rpm_location, rpm_name)
+
+            ## Query the downloaded RPM to figure out the package name
+            cmd = 'rpm -qp ' + str(rpm_path)
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+            out, err = process.communicate()
+
+            if process.returncode:
+                if self.debug:
+                    self.logger.debug("Failed to get the Package name from downloaded RPM, aborting installation process")
+                self.syslogger.info("Failed to get the Package name from downloaded RPM, aborting installation process")
+
+                result["status"] = "error"
+                result["output"] = "Failed to get the package name from RPM %s" % rpm_name
+
+                # Cleanup
+                try:
+                    os.remove(rpm_path)
+                except OSError:
+                    result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                return result
+
+            else:
+                package_name = out.rstrip()
+                if package_name.endswith('.x86_64'):
+                    package_name = package_name[:-len('.x86_64')]
+                else:
+                    result["status"] = "error"
+                    result["output"] = "Package name %s does not end with x86_64 for  RPM %s" % (package_name, rpm_name)
+
+                    # Cleanup
+                    try:
+                        os.remove(rpm_path)
+                    except OSError:
+                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                    return result
+
+                # Now install the package using install update
+
+                install_update = self.xrcmd({"exec_cmd" : "install update source  %s %s" % (rpm_location, rpm_name)})
+
+                if install_update["status"] == "success":
+                    t_end = time.time() + 60 * 5
+                    while time.time() < t_end:
+
+                        install_active = self.xrcmd({"exec_cmd" : "show install active"})
+
+                        if install_active["status"] == "error":
+                            result["status"] = "error"
+                            result["output"] = "Failed to fetch output of show install active -Installation of package %s failed" % package_name
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            return result
+
+                        # Fetch the number of active nodes on the chassis
+                        show_active_nodes = self.xrcmd({"exec_cmd" : "show platform vm"})
+                        if show_active_nodes["status"] == "error":
+                            result["status"] = "error"
+                            result["output"] = "Failed to fetch output of show platform vm -Installation of package %s failed" % package_name
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            return result
+
+                        active_node_list = show_active_nodes["output"]
+                        active_nodes = len(active_node_list[2:])
+
+                        # Since package must get installed on every node, get the count of number of installations for the package
+                        install_count = ''.join(install_active["output"]).count(package_name)
+                        # Install count must match the active node count
+
+                        if install_count == active_nodes:
+                            if self.debug:
+                                self.logger.debug("Installation of %s package successful" % package_name)
+                            self.syslogger.info("Installation of %s package successsful" % package_name)
+
+                            result["status"] = "success"
+                            result["output"] = "Installation of %s package successful" % package_name
+
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            break
+                        else:
+                            # Sleep for 10 seconds before checking again
+                            time.sleep(10)
+                            if self.debug:
+                                self.logger.debug("Waiting for installation of %s package to complete" % package_name)
+                            self.syslogger.info("Waiting for installation of %s package to complete" % package_name)
+
+                    if result["status"] == "error":
+                        result["output"] =  "Installation of %s package timed out" % package_name
+                        # Cleanup
+                        try:
+                            os.remove(rpm_path)
+                        except OSError:
+                            result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+
+                    return result
+                else:
+                    result["status"] = "error"
+                    result["output"] = "Failed to execute install update command for package: %s" % package_name
+                    # Cleanup
+                    try:
+                        os.remove(rpm_path)
+                    except OSError:
+                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                    return result
+
+
+
+    def install_xr_add_activate(self, package_url):
+        """ Method to install XR packages through initial download followed
+            by local install and cleanup
+ 
+            Uses install add+activate utilities
+            :param package_url: Complete URL of the package to be downloaded
+                                and installed
+            :type package_url: str
+            :return: Dictionary specifying success/error and an associated message
+                     {'status': 'success/error',
+                      'output': 'success/error message',
+                      'warning': 'warning if cleanup fails'}
+            :rtype: dict
+        """
+
+        result = {"status": "error", "output" : "Installation of package  failed!"}
+
+        # First download the package to the /misc/app_host/scratch folder
+
+        output = self.download_file(package_url, destination_folder="/misc/app_host/scratch")
+
+        if output["status"] == "error":
+            if self.debug:
+                self.logger.debug("Package Download failed, aborting installation process")
+            self.syslogger.info("Package Download failed, aborting installation process")
+
+            return result
+
+        elif output["status"] == "success":
+            if self.debug:
+                self.logger.debug("Package Download complete, starting installation process")
+
+            self.syslogger.info("Package Download complete, starting installation process")
+
+            rpm_name = output["filename"]
+            rpm_location = output["folder"]
+            rpm_path = os.path.join(rpm_location, rpm_name)
+
+            ## Query the downloaded RPM to figure out the package name
+            cmd = 'rpm -qp ' + str(rpm_path)
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+            out, err = process.communicate()
+
+            if process.returncode:
+                if self.debug:
+                    self.logger.debug("Failed to get the Package name from downloaded RPM, aborting installation process")
+                self.syslogger.info("Failed to get the Package name from downloaded RPM, aborting installation process")
+
+                result["status"] = "error"
+                result["output"] = "Failed to get the package name from RPM %s" % rpm_name
+
+                # Cleanup
+                try:
+                    os.remove(rpm_path)
+                except OSError:
+                    result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                return result
+
+            else:
+                package_name = out.rstrip()
+                if package_name.endswith('.x86_64'):
+                    package_name = package_name[:-len('.x86_64')]
+                else:
+                    result["status"] = "error"
+                    result["output"] = "Package name %s does not end with x86_64 for  RPM %s" % (package_name, rpm_name)
+
+                    # Cleanup
+                    try:
+                        os.remove(rpm_path)
+                    except OSError:
+                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                    return result 
+                   
+                # Run the install add command in XR exec 
+
+                install_add = self.xrcmd({"exec_cmd" : "install add source %s %s" % (rpm_location, rpm_name)})
+
+                if install_add["status"] == "success":
+                    t_end = time.time() + 60 * 5
+                    while time.time() < t_end: 
+                            
+                        install_inactive = self.xrcmd({"exec_cmd" : "show install inactive"})
+                            
+                        if install_inactive["status"] == "error":
+                            result["status"] = "error"
+                            result["output"] = "Failed to fetch output of show install inactive -Installation of package %s failed" % package_name
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                        
+                            return result
+                        else:
+                            inactive_packages =  install_inactive["output"][1:]
+                            if package_name in inactive_packages:
+                                self.logger.debug("Install add successful, ready to activate package %s" % (package_name)) 
+                                break 
+                            else:
+                                # Sleep for 10 seconds before checking again
+                                time.sleep(10)
+                                if self.debug:
+                                    self.logger.debug("Waiting for install add of %s package to complete" % package_name)
+                                self.syslogger.info("Waiting for install add of  %s package to complete" % package_name)
+
+                else:
+                    result["status"] = "error"
+                    result["output"] = "Failed to execute install add command for rpm: %s" % rpm_name
+                    # Cleanup
+                    try:
+                        os.remove(rpm_path)
+                    except OSError:
+                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                    return result
+
+
+
+
+                # Now activate the package
+
+                install_activate = self.xrcmd({"exec_cmd" : "install activate %s" % (package_name)})
+                
+                if install_activate["status"] == "success":
+                    t_end = time.time() + 60 * 5
+                    while time.time() < t_end:
+
+                        install_active = self.xrcmd({"exec_cmd" : "show install active"})
+
+                        if install_active["status"] == "error":
+                            result["status"] = "error"
+                            result["output"] = "Failed to fetch output of show install active -Installation of package %s failed" % package_name
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            return result
+
+                        # Fetch the number of active nodes on the chassis
+                        show_active_nodes = self.xrcmd({"exec_cmd" : "show platform vm"})
+                        if show_active_nodes["status"] == "error":
+                            result["status"] = "error"
+                            result["output"] = "Failed to fetch output of show platform vm -Installation of package %s failed" % package_name
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            return result
+
+                        active_node_list = show_active_nodes["output"]
+                        active_nodes = len(active_node_list[2:])
+
+                        # Since package must get installed on every node, get the count of number of installations for the package
+                        install_count = ''.join(install_active["output"]).count(package_name)
+                        # Install count must match the active node count
+
+                        if install_count == active_nodes:
+                            if self.debug:
+                                self.logger.debug("Installation of %s package successful" % package_name)
+                            self.syslogger.info("Installation of %s package successsful" % package_name)
+
+                            result["status"] = "success"
+                            result["output"] = "Installation of %s package successful" % package_name
+
+                            # Cleanup
+                            try:
+                                os.remove(rpm_path)
+                            except OSError:
+                                result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+                            break
+                        else:
+                            # Sleep for 10 seconds before checking again
+                            time.sleep(10)
+                            if self.debug:
+                                self.logger.debug("Waiting for installation of %s package to complete" % package_name)
+                            self.syslogger.info("Waiting for installation of %s package to complete" % package_name)
+
+                    if result["status"] == "error":
+                        result["output"] =  "Installation of %s package timed out" % package_name
+                        # Cleanup
+                        try:
+                            os.remove(rpm_path)
+                        except OSError:
+                            result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+
+
+                    return result
+                else:
+                    result["status"] = "error"
+                    result["output"] = "Failed to execute install activate command for package: %s" % package_name
+                    # Cleanup
+                    try:
+                        os.remove(rpm_path)
+                    except OSError:
+                        result["warning"] = "failed to remove RPM from path: "+str(rpm_path)
+                    return result
+
 
 
     def xr_install_commit(self, duration=60):
@@ -148,22 +665,19 @@ class ZtpFunctions(ZtpHelpers):
 
 
 
-    def get_apply_config(self, url=None, caption=None):
+    def get_replace_config(self, url=None, caption=None):
         """User defined method in Child Class
            Downloads IOS-XR config from specified 'url'
-           and applies config to the box. 
+           and replaces config to the box. 
 
-           Leverages xrapply() method in ZtpHelpers Class.
+           Leverages xrreplace() method in ZtpHelpers Class.
 
            :param url: Complete url for config to be downloaded 
-           :param caption: Any reason to be specified when applying 
-                           config. Will show up in the output of:
-                          "show configuration commit list detail" 
            :type url: str 
            :type caption: str 
 
            :return: Return a dictionary with status and output
-                    { 'status': 'error/success', 'output': 'output from xrapply/custom error' }
+                    { 'status': 'error/success', 'output': 'output from xrreplace/custom error' }
            :rtype: dict
         """
 
@@ -189,11 +703,11 @@ class ZtpFunctions(ZtpHelpers):
             caption = "Configuration Applied through ZTP python"
 
         # Apply Configuration file
-        config_apply = self.xrapply(result, reason=caption)
+        config_replace = self.xrreplace(result)
 
-        if config_apply["status"] == "error":
-            self.syslogger.info("Failed to apply config: Config Apply result = %s" % config_apply["output"])
-            result["output"] = config_apply["output"]
+        if config_replace["status"] == "error":
+            self.syslogger.info("Failed to apply config: Config Apply result = %s" % config_replace["output"])
+            result["output"] = config_replace["output"]
             return result
 
 
@@ -204,7 +718,7 @@ class ZtpFunctions(ZtpHelpers):
             os.remove(file_path)
         except OSError:
             self.syslogger.info("Failed to remove downloaded config file")
-            result["output"] = config_apply["output"]
+            result["output"] = config_replace["output"]
             result["warning"] = "Failed to remove downloaded config file @ %s" % file_path
         return result
 
@@ -368,7 +882,7 @@ class ZtpFunctions(ZtpHelpers):
                 if standby_ip["status"] == "error":
                     return {"status" : "error", "output" : ""}
                 standby_cmd = "ip netns exec xrnns ssh root@"+str(standby_ip["peer_rp_ip"])+ " " + "\"$(< "+str(f.name)+")\"" 
-                
+               
                 bash_out = self.run_bash(standby_cmd)
 
                 if bash_out["status"]:
@@ -405,11 +919,11 @@ class ZtpFunctions(ZtpHelpers):
         if croncmd is None:
             self.syslogger.info("No cron job specified")
             return {"status" : "error", "output" : ""}
- 
+
         ## Create a Named temp file to help replace the current cronjob file
 
         
-        with tempfile.NamedTemporaryFile(delete=True) as f:
+        with tempfile.NamedTemporaryFile(delete=False) as f:
             cmd = "crontab -l > " + str(f.name)
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
             out, err = process.communicate()
@@ -450,6 +964,14 @@ class ZtpFunctions(ZtpHelpers):
                         f.flush()
                         f.seek(0,0) 
                         self.syslogger.info("Adding Cronjob as instructed")
+
+
+                        # Add the croncmd to /etc/tmpdir_cleanup.crontab otherwise the init
+                        # scripts will replace the crontab on reboot. This is a BUG and will be fixed.
+
+                        with open("/etc/tmpdir_cleanup.crontab", "a") as buggy_crontab:
+                            buggy_crontab.write(str(croncmd) + '\n')
+
                     elif action == "delete":
                         self.syslogger.info("cronjob doesn't exist already, skipping delete")
                         return {"status" : "success"}
@@ -459,31 +981,30 @@ class ZtpFunctions(ZtpHelpers):
                         return {"status" : "error"}
 
 
-               # Now replace the current crontab with the tempfile contents
-
-
-               # cmd = "crontab  " + str(f.name)
-               # process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-               # out, err = process.communicate()
-
-               # if process.returncode:
-               #     self.syslogger.info("Failed to modify crontab: "+str(out))
-               #     return {"status" : "error"}
-
-
-                # Workaround technique using xrcmd till ulimit stack size is increased.
-                cmd = "bash -c crontab " + str(f.name)
-                crontab_change = self.xrcmd({"exec_cmd" : cmd})
-               
-                process = subprocess.Popen('crontab -l', stdout=subprocess.PIPE, shell=True)
+                self.syslogger.info("Updating the crontab")
+                cmd = "crontab " + str(f.name)
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
                 out, err = process.communicate()
 
                 if process.returncode:
-                    self.syslogger.info("Failed to get crontab: "+str(out))
-                    return {"status" : "error"} 
+                    self.syslogger.info("Failed to update crontab "+str(out))
+                    return {"status" : "error"}
 
-               
+
+                self.syslogger.info("Dumping the updated crontab")
+                cmd = "crontab -l" 
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+                out, err = process.communicate()
+
+                if process.returncode:
+                    self.syslogger.info("Failed to fetch updated crontab")
+                    return {"status" : "error"}
+
+
+                # Seek back to the beginning of the temp file before issuing a read
                 f.seek(0,0)
+
+
                 if f.read() == out:
                     self.syslogger.info("Cronjob updated on active RP!")
                 else:
@@ -502,17 +1023,31 @@ class ZtpFunctions(ZtpHelpers):
                             remove = self.execute_cmd_on_standby("rm "+str(f.name))#
                             if remove["status"] == "success":
                                 self.syslogger.info("Cronjob updated on standby RP!")
+
+                                # Add the croncmd to /etc/tmpdir_cleanup.crontab otherwise the init
+                                # scripts will replace the crontab on reboot. This is a BUG and will be fixed.
+                                buggy_fname = "/etc/tmpdir_cleanup.crontab"
+                                if self.scp_to_standby(buggy_fname, buggy_fname)["status"] == "success":
+                                    self.syslogger.info("Successfully modified /etc/tmpdir_cleanup.crontab on standby "+ str(result["output"]))
+                                else:
+                                    self.syslogger.info("Failed to modify /etc/tmpdir_cleanup.crontab on standby"+ str(result["output"]))
+                                    return {"status" : "error"}
+
                                 return {"status" : "success"}
                             else:
                                 return {"status" : "success", "warning" : "failed to remove tempfile on standby"}
                         else:
                             self.syslogger.info("Failed to modify crontab on standby: "+ str(result["output"]))
-                            #remove tempfile from standby
+                            #remove tempfile from standby despite failure
                             remove = self.execute_cmd_on_standby("rm "+str(f.name))
                             if remove["status"] == "success":
                                 return {"status" : "error"}
                             else:
                                 return {"status" : "error", "warning" : "failed to remove tempfile on standby"}
+
+                    else:
+                        self.syslogger.info("Failed to transfer modified crontab to standby")
+                        return {"status" : "error"}
 
                 return {"status" : "success"}
 
@@ -526,13 +1061,11 @@ class ZtpFunctions(ZtpHelpers):
             try:
                 for line in show_platform["output"]:
                     if '/CPU' in line.split()[0]:
-                        print line
                         node_info =  line.split()
-                        print node_info
                         node_name = node_info[0]
-                        print node_name
                         if 'RP' in node_name:
                             rp_count = rp_count + 1
+
 
                 if rp_count in (1,2):
                     return {"status": "success", "rp_count": rp_count}
@@ -558,7 +1091,7 @@ if __name__ == "__main__":
     # Create an Object of the child class, syslog parameters are optional. 
     # If nothing is specified, then logging will happen to local log rotated file.
 
-    ztp_script = ZtpFunctions(syslog_file="/root/ztp_python.log", syslog_server="11.11.11.2", syslog_port=514)
+    ztp_script = ZtpFunctions(syslog_file=SYSLOG_LOCAL_FILE, syslog_server=SYSLOG_SERVER, syslog_port=SYSLOG_PORT)
 
     ztp_script.syslogger.info("###### Starting ZTP RUN on NCS5508 ######")
 
@@ -580,11 +1113,11 @@ if __name__ == "__main__":
 
     # Wait for all nodes (linecards, standby etc.)  to be up before installing packages
     # Check for a user defined maximum (time in seconds)
-    if ztp_script.wait_for_nodes(600):
+    if ztp_script.wait_for_nodes(120):
         ztp_script.syslogger.info("All Nodes are up!") 
     else:
-        ztp_script.syslogger.info("Nodes did not come up! Abort!")
-        sys.exit(0)
+        ztp_script.syslogger.info("Nodes did not come up! Continuing")
+        #sys.exit(1)
 
     # We've waited and checked long enough, now determine if the system is in HA (standby RP present)
 
@@ -599,24 +1132,24 @@ if __name__ == "__main__":
             ztp_script.syslogger.info("Standby RP present, operations will be performed on Active and Standby")
     else:
         ztp_script.syslogger.info("Unable to determine Standby Status on system. Error:"+ check_ha["error"])
-        sys.exit(0)
+        sys.exit(1)
 
 
     # Use the parent class helper methods
 
     ztp_script.syslogger.info("###### Installing k9sec package ######")
-    install_result =  ztp_script.install_xr_package("http://11.11.11.2:9090/packages/ncs5500-k9sec-2.2.0.0.x86_64.rpm")
+    install_result =  ztp_script.install_xr_update(SERVER_URL_PACKAGES + K9SEC_PACKAGE)
 
     if install_result["status"] == "error":
         ztp_script.syslogger.info("Failed to install k9sec package")
-        sys.exit(0)
+        sys.exit(1)
 
     ztp_script.syslogger.info("###### install mgbl package ######")
-    install_result = ztp_script.install_xr_package("http://11.11.11.2:9090/packages/ncs5500-mgbl-3.0.0.0.x86_64.rpm")
+    install_result = ztp_script.install_xr_add_activate(SERVER_URL_PACKAGES + MGBL_PACKAGE)
 
     if install_result["status"] == "error":
         ztp_script.syslogger.info("Failed to install mgbl package")
-        sys.exit(0)
+        sys.exit(1)
 
 
     # To make sure xr packages remain active post reloads, commit them
@@ -625,29 +1158,29 @@ if __name__ == "__main__":
 
     if install_commit["status"] == "error":
         ztp_script.syslogger.info("Failed to commit installed packages")
-        sys.exit(0)
+        sys.exit(1)
 
 
              
     # Download Config with Mgmt vrfs
-    output = ztp_script.download_file("http://11.11.11.2:9090/configs/ncs5508_vrf_test.config", destination_folder="/root/") 
+    output = ztp_script.download_file(SERVER_URL_CONFIGS + CONFIG_FILE, destination_folder="/root/") 
 
     if output["status"] == "error":
         ztp_script.syslogger.info("Config Download failed, Abort!")
-        sys.exit(0)
+        sys.exit(1)
 
-    ztp_script.syslogger.info("Applying downloaded config to System")
-    # Apply downloaded config file (merge) 
-    config_apply = ztp_script.xrapply("/root/ncs5508_vrf_test.config", reason="Applied Base Config using ZTP python")
+    ztp_script.syslogger.info("Replacing system config with the downloaded config")
+    # Replace existing config with downloaded config file 
+    config_apply = ztp_script.xrreplace("/root/ncs5508_vrf_test.config")
 
     if config_apply["status"] == "error":
-        ztp_script.syslogger.info("Failed to apply base config")
+        ztp_script.syslogger.info("Failed to replace existing config")
         ztp_script.syslogger.info("Config Apply result = %s" % config_apply["output"]) 
         try:
             os.remove("/root/ncs5508_vrf_test.config")
         except OSError:
             ztp_script.syslogger.info("Failed to remove downloaded config file")
-        sys.exit(0) 
+        sys.exit(1) 
     
     # VRFs on Mgmt interface are configured by user. Use the set_vrf helper method to set proper
     # context before continuing. 
@@ -701,14 +1234,14 @@ if __name__ == "__main__":
     
         if standby_scp["status"] == "error":
             ztp_script.syslogger.info("Failed to transfer resolver file to standby")
-            sys.exit(0)
+            sys.exit(1)
 
 
     # Set up access to yum repository for Puppet. User could do a direct download and install via rpm as well
 
     ztp_script.syslogger.info("Setting up yum repo for puppet RPM install on Active and Standby RP")
 
-    yum_repo = "http://11.11.11.2:9090/packages/"
+    yum_repo = SERVER_URL_PACKAGES 
     puppet_yum_conf = "/etc/yum/repos.d/puppet.repo"
 
     setup_yum_repo = ["### created by ztp "+str(date)+ " ###",
@@ -728,7 +1261,7 @@ if __name__ == "__main__":
 
         if standby_scp["status"] == "error":
             ztp_script.syslogger.info("Failed to transfer puppet yum config file to standby")
-            sys.exit(0)
+            sys.exit(1)
 
 
     # Download GPG KEYS for puppet install
@@ -742,11 +1275,11 @@ if __name__ == "__main__":
 
 
     for gpg_key in gpg_keys_list:
-        download_gpg = ztp_script.download_file("http://11.11.11.2:9090/packages/"+str(gpg_key), destination_folder="/root/")
+        download_gpg = ztp_script.download_file(SERVER_URL_PACKAGES+str(gpg_key), destination_folder="/root/")
 
         if download_gpg["status"] == "error":
             ztp_script.syslogger.info("Failed to download "+str(gpg_key))
-            sys.exit(0)
+            sys.exit(1)
 
         filename = download_gpg["filename"]
         folder = download_gpg["folder"]
@@ -758,7 +1291,7 @@ if __name__ == "__main__":
 
             if standby_scp["status"] == "error":
                 ztp_script.syslogger.info("Failed to transfer gpg key to standby")
-                sys.exit(0)
+                sys.exit(1)
 
         # Import the GPG Key on Active and Standby (if present)
         ztp_script.syslogger.info("Importing GPG key:"+str(gpg_key)+"on active")
@@ -766,7 +1299,7 @@ if __name__ == "__main__":
  
         if rpm_import["status"] == "error":
             ztp_script.syslogger.info("Failed to import GPG Key:"+str(gpg_key)+"on active")
-            sys.exit(0)
+            sys.exit(1)
 
 
         if standby_rp_present:
@@ -774,7 +1307,7 @@ if __name__ == "__main__":
             standby_rpm_import = ztp_script.execute_cmd_on_standby("rpm --import /root/"+str(gpg_key))
             if standby_rpm_import["status"] == "error":
                 ztp_script.syslogger.info("Failed to import GPG Key:"+str(gpg_key)+"on standby")
-                sys.exit(0)
+                sys.exit(1)
 
 
 
@@ -793,7 +1326,7 @@ if __name__ == "__main__":
 
         if result["status"] == "error":
             ztp_script.syslogger.info("Failed to execute command on Active: " + str(cmd))
-            sys.exit(0)
+            #sys.exit(1)
 
 
     if standby_rp_present:
@@ -802,12 +1335,12 @@ if __name__ == "__main__":
 
         if standby_scp["status"] == "error":
             ztp_script.syslogger.info("Failed to transfer puppet RPM to standby")
-            sys.exit(0)
+            sys.exit(1)
 
         standby_rpm_install = ztp_script.execute_cmd_on_standby("/usr/bin/rpm -ivh /root/puppet*.rpm > /dev/null")
         if standby_rpm_install["status"] == "error":
             ztp_script.syslogger.info("Failed to install Puppet RPM on standby")
-            sys.exit(0)
+            #sys.exit(1)
 
 
 
@@ -831,15 +1364,15 @@ if __name__ == "__main__":
 
         if standby_scp["status"] == "error":
             ztp_script.syslogger.info("Failed to transfer puppet yum config file to standby")
-            sys.exit(0)
+            sys.exit(1)
 
 
     ztp_script.syslogger.info("Downloading and setting up python Cronjob to start daemons in event of switchover")
-    download_cron = ztp_script.download_file("http://11.11.11.2:9090/scripts/cron_action.py", destination_folder="/root/")
+    download_cron = ztp_script.download_file(SERVER_URL_SCRIPTS + CRON_SCRIPT, destination_folder="/root/")
 
     if download_cron["status"] == "error":
         ztp_script.syslogger.info("Unable to download cron job!")
-        sys.exit(0)
+        sys.exit(1)
 
 
     filename = download_cron["filename"]
@@ -853,10 +1386,10 @@ if __name__ == "__main__":
 
         if standby_scp["status"] == "error":
             ztp_script.syslogger.info("Failed to transfer cronjob script to standby")
-            sys.exit(0)
+            sys.exit(1)
 
     #Create the cron cmd 
-    croncmd = "* * * * * /usr/bin/python " + str(filepath)
+    croncmd = "* * * * * PATH=/sbin:/usr/sbin:/bin:/usr/bin:${PATH};/usr/bin/python " + str(filepath)
 
     # Set up cronjob on active and standby(if present)
 
@@ -864,10 +1397,9 @@ if __name__ == "__main__":
 
     if cron_setup["status"] == "error":
         ztp_script.syslogger.info("Unable to set up cron Job, quitting ZTP script")
-        sys.exit(0)
+        sys.exit(1)
 
 
 
-    # Starting Puppet  
     ztp_script.syslogger.info("ZTP complete!")
-
+    sys.exit(0)
