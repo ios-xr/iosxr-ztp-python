@@ -173,6 +173,26 @@ point to a remote syslog Server or local file or default log-rotated log file.
            :rtype: dict
 ```
 
+*  **xrreplace(self, filename=None)**:
+
+```
+           Replace XR Configuration using a file
+
+           :param file: Filepath for a config file
+                        with the following structure:
+
+                        !
+                        XR config commands
+                        !
+                        end
+           :type filename: str
+           :return: Dictionary specifying the effect of the config change
+                     { 'status' : 'error/success', 'output': 'exec command based on status'}
+                     In case of Error:  'output' = 'show configuration failed'
+                     In case of Success: 'output' = 'show configuration commit changes last 1'
+           :rtype: dict
+```
+
 ## Sample Run Output
 Checkout `sample_ztp_script.py` to see how to use the `ZtHelpers` Class and to write your own methods in the child class.
 The output from `sample_ztp_script.py` run on IOS-XR shell when `ztp_helpers.py` is available in the `PYTHONPATH` is shown below:
