@@ -173,34 +173,6 @@ point to a remote syslog Server or local file or default log-rotated log file.
            :rtype: dict
 ```
 
-* **all_nodes_ready(self)**:
-
-```
-             Method to check if all nodes on the chassis are ready 
-            :return: Dictionary specifying success/error and an associated message
-                     {'status': 'success/error',
-                      'output':  True/False in case of success, 
-                                 error mesage in case of error}
-            :rtype: dict
-```
-
-*  **install_xr_package(self, package_url)**:  
-
-```
-            Method to install XR packages through initial download followed
-            by local install and cleanup
-            :param package_url: Complete URL of the package to be downloaded
-                                and installed
-            :type package_url: str
-            :return: Dictionary specifying success/error and an associated message
-                     {'status': 'success/error',
-                      'output': 'success/error message',
-                      'warning': 'warning if cleanup fails'}
-            :rtype: dict
-```
-
-
-
 ## Sample Run Output
 Checkout `sample_ztp_script.py` to see how to use the `ZtHelpers` Class and to write your own methods in the child class.
 The output from `sample_ztp_script.py` run on IOS-XR shell when `ztp_helpers.py` is available in the `PYTHONPATH` is shown below:
