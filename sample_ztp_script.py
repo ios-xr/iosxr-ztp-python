@@ -59,18 +59,10 @@ if __name__ == "__main__":
     ztp_script.set_root_user()
 
 
-    # Use the parent class helper methods
-
-    print "\n###### Installing k9sec package with Debugs ######\n"
-    ztp_script.install_xr_package("http://11.11.11.2:9090/packages/ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm")
 
     # Disable debugs
     print "\n###### Debugs Disabled ######\n"
     ztp_script.toggle_debug(0)
-
-
-    print "\n###### install mgbl package without debugs ######\n"
-    ztp_script.install_xr_package("http://11.11.11.2:9090/packages/ncs5500-mgbl-3.0.0.0-r62121I.x86_64.rpm")
 
     # Show commands using Parent class helper method: xrcmd
 
