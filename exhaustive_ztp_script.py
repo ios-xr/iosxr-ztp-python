@@ -14,8 +14,8 @@ SERVER_URL_PACKAGES = SERVER_URL+"packages/"
 SERVER_URL_SCRIPTS = SERVER_URL+"scripts/"
 SERVER_URL_CONFIGS = SERVER_URL+"configs/"
 CONFIG_FILE = "ncs5508_vrf_test.config"
-K9SEC_PACKAGE = "ncs5500-k9sec-3.2.0.0-r622508I.x86_64.rpm"
-MGBL_PACKAGE = "ncs5500-mgbl-3.0.0.0-r622508I.x86_64.rpm"
+K9SEC_PACKAGE = "ncs5500-k9sec-3.2.0.0-r6225.x86_64.rpm"
+MGBL_PACKAGE = "ncs5500-mgbl-3.0.0.0-r6225.x86_64.rpm"
 SYSLOG_SERVER = "11.11.11.2"
 SYSLOG_PORT = 514
 SYSLOG_LOCAL_FILE = "/root/ztp_python.log"
@@ -1171,13 +1171,13 @@ if __name__ == "__main__":
 
     ztp_script.syslogger.info("Replacing system config with the downloaded config")
     # Replace existing config with downloaded config file 
-    config_apply = ztp_script.xrreplace("/root/ncs5508_vrf_test.config")
+    config_apply = ztp_script.xrreplace("/root/" + CONFIG_FILE)
 
     if config_apply["status"] == "error":
         ztp_script.syslogger.info("Failed to replace existing config")
         ztp_script.syslogger.info("Config Apply result = %s" % config_apply["output"]) 
         try:
-            os.remove("/root/ncs5508_vrf_test.config")
+            os.remove("/root/" + CONFIG_FILE)
         except OSError:
             ztp_script.syslogger.info("Failed to remove downloaded config file")
         sys.exit(1) 
@@ -1217,7 +1217,7 @@ if __name__ == "__main__":
 
     resolver = "/etc/resolv.conf"
     domain = "cisco.com"
-    nameserver = "171.70.168.183"
+    nameserver = "2.2.2.2"
 
     setup_resolver = ["### created by ztp " +str(date) + " ###" ,
                       "domain "+str(domain),
