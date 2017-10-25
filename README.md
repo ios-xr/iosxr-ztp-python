@@ -221,25 +221,8 @@ Building configuration...
 2016-12-17 04:23:29,329 - DebugZTPLogger - DEBUG - Exec command output is ['!! IOS XR Configuration version = 6.2.1.21I', 'username netops', 'group root-lr', 'group cisco-support', 'secret 5 $1$7kTu$zjrgqbgW08vEXsYzUycXw1', '!', 'end']
 2016-12-17 04:23:29,330 - DebugZTPLogger - DEBUG - Config apply through file successful, last change = ['!! IOS XR Configuration version = 6.2.1.21I', 'username netops', 'group root-lr', 'group cisco-support', 'secret 5 $1$7kTu$zjrgqbgW08vEXsYzUycXw1', '!', 'end']
 
-###### Installing k9sec package with Debugs ######
-
-2016-12-17 04:23:29,334 - DebugZTPLogger - DEBUG - Downloading file ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm from URL:http://11.11.11.2:9090/packages/ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm
-2016-12-17 04:23:29,608 - DebugZTPLogger - DEBUG - Package Download complete, starting installation process
-2016-12-17 04:23:29,648 - DebugZTPLogger - DEBUG - Received exec command request: "install update source /misc/app_host/scratch ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm"
-2016-12-17 04:23:29,648 - DebugZTPLogger - DEBUG - Response to any expected prompt ""
-2016-12-17 04:23:33,650 - DebugZTPLogger - DEBUG - Exec command output is ['++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++', 'Update in progress...', 'Scheme : localdisk', 'Hostname : m', 'Username : None', 'SourceDir : /misc/app_host/scratch', 'Collecting software state..', 'ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm is ignored as there is active package from same release.', 'Update packages :', 'ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm', 'Skipped downloading active packages:', 'ncs5500-k9sec-2.2.0.0-r62121I.x86_64.rpm', 'There is nothing to add, skipping install add operation', 'There is nothing to activate, skipping install activate operation']
-2016-12-17 04:23:33,650 - DebugZTPLogger - DEBUG - Received exec command request: "show install active"
-2016-12-17 04:23:33,650 - DebugZTPLogger - DEBUG - Response to any expected prompt ""
-2016-12-17 04:23:34,080 - DebugZTPLogger - DEBUG - Exec command output is ['Node 0/RP0/CPU0 [RP]', 'Boot Partition: xr_lv0', 'Active Packages: 3', 'ncs5500-xr-6.2.1.21I version=6.2.1.21I [Boot image]', 'ncs5500-k9sec-2.2.0.0-r62121I', 'ncs5500-mgbl-3.0.0.0-r62121I', 'Node 0/RP1/CPU0 [RP]', 'Boot Partition: xr_lv0', 'Active Packages: 3', 'ncs5500-xr-6.2.1.21I version=6.2.1.21I [Boot image]', 'ncs5500-k9sec-2.2.0.0-r62121I', 'ncs5500-mgbl-3.0.0.0-r62121I', 'Node 0/0/CPU0 [LC]', 'Boot Partition: xr_lv0', 'Active Packages: 3', 'ncs5500-xr-6.2.1.21I version=6.2.1.21I [Boot image]', 'ncs5500-k9sec-2.2.0.0-r62121I', 'ncs5500-mgbl-3.0.0.0-r62121I']
-2016-12-17 04:23:34,080 - DebugZTPLogger - DEBUG - Received exec command request: "show platform vm"
-2016-12-17 04:23:34,080 - DebugZTPLogger - DEBUG - Response to any expected prompt ""
-2016-12-17 04:23:34,489 - DebugZTPLogger - DEBUG - Exec command output is ['Node name       Node type       Partner name    SW status       IP address', '--------------- --------------- --------------- --------------- ---------------', '0/RP1/CPU0      RP (STANDBY)    0/RP0/CPU0      FINAL Band      192.0.112.4', '0/RP0/CPU0      RP (ACTIVE)     0/RP1/CPU0      FINAL Band      192.0.108.4', '0/0/CPU0        LC (ACTIVE)     NONE            FINAL Band      192.0.4.3']
-2016-12-17 04:23:34,490 - DebugZTPLogger - DEBUG - Installation of ncs5500-k9sec package successful
 
 ###### Debugs Disabled ######
-
-
-###### install mgbl package without debugs ######
 
 
 ###### Executing a show command ######
