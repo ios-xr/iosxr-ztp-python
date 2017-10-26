@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 
-import sys, os, subprocess
+# Since /pkg/bin is not in default PYTHONPATH, the following 
+# two lines are necessary to be able to use the ztp_helper.py
+# library on the box
+
+import sys
 sys.path.append("/pkg/bin/")
+
+
+import os, subprocess, shutil
 from ztp_helper import ZtpHelpers
-import json, tempfile, time
+import re, datetime, json, tempfile, time
 from time import gmtime, strftime
 
 ROOT_USER = "vagrant"
@@ -59,72 +66,6 @@ class ZtpFunctions(ZtpHelpers):
             self.syslogger.info("Failed to apply root user to system %s"+json.dumps(result))
 
         return result
-
-    def xrreplace(self, filename=None):
-        """Replace XR Configuration using a file 
-          
-           :param file: Filepath for a config file
-                        with the following structure: 
-
-                        !
-                        XR config commands
-                        !
-                        end
-           :type filename: str
-           :return: Dictionary specifying the effect of the config change
-                     { 'status' : 'error/success', 'output': 'exec command based on status'}
-                     In case of Error:  'output' = 'show configuration failed' 
-                     In case of Success: 'output' = 'show configuration commit changes last 1'
-           :rtype: dict 
-        """
-
-
-        if filename is None:
-            return {"status" : "error", "output": "No config file provided for xrreplace"}
-
-        status = "success"
-
-        try:
-            if self.debug:
-                with open(filename, 'r') as config_file:
-                    data=config_file.read()
-                self.logger.debug("Config File content to be applied %s" % data)
-        except Exception as e:
-            return {"status" : "error" , "output" : "Invalid config file provided"}
-
-        cmd = "source /pkg/bin/ztp_helper.sh && xrreplace " + filename
-
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
-
-        # Check if the commit failed
-
-        if process.returncode:
-            ## Config commit failed.
-            status = "error"
-            exec_cmd = "show configuration failed"
-            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_failed["status"] == "error":
-                output = "Failed to fetch config failed output"
-            else:
-                output = config_failed["output"]
-
-            if self.debug:
-                self.logger.debug("Config replace through file failed, output = %s" % output)
-            return  {"status": status, "output": output}
-        else:
-            ## Config commit successful. Let's return the last config change
-            exec_cmd = "show configuration commit changes last 1"
-            config_change = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_change["status"] == "error":
-                output = "Failed to fetch last config change"
-            else:
-                output = config_change["output"]
-
-            if self.debug:
-                self.logger.debug("Config replace through file successful, last change = %s" % output)
-            return {"status": status, "output" : output}
-
 
 
     def all_nodes_ready(self):
@@ -732,7 +673,7 @@ class ZtpFunctions(ZtpHelpers):
            :type cmd: str 
            
            :return: Return a dictionary with status and output
-                    { 'status': 'error/success', 
+                    { 'status': '0 or non-zero', 
                       'output': 'output from bash cmd' }
            :rtype: dict
         """
@@ -891,18 +832,28 @@ class ZtpFunctions(ZtpHelpers):
                 else:
                     return {"status" : "success", "output": bash_out["output"]}
 
-            
-    def cron_job(self, croncmd=None, standby=False, action="add"): 
+
+
+    def cron_job(self, croncmd=None, croncmd_fname=None, cronfile=None, standby=False, action="add"):
         """User defined method in Child Class
            Pretty useful method to cleanly add or delete cronjobs 
            on the active and/or standby RP.
 
-           Also cleans up after itself and prevents duplication of cronjobs.
 
-           Leverages execute_cmd_on_standby(), scp_to_standby() methods above
-           and xrcmd() method from Parent ZtpHelpers class.
+           Leverages execute_cmd_on_standby(), scp_to_standby() methods defined above
 
            :param croncmd: croncmd to be added to crontab on Active RP 
+           :param croncmd_fname: user can specify a custom name for the file to create under
+                                 /etc/cron.d . If not specified, then the name is randomly generated
+                                 in the following form:
+                                 /etc/cron.d/ztp_cron_timestamp
+                                 where timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+ 
+ 
+           :param cronfile: Absolute Path to user specified cronfile to blindly place and activate. 
+                            Name of the target file under /etc/cron.d will be the same as original filename.
+                            If both croncmd and cronfile are provided at the same time, then
+                            cronfile will be preferred.
            :param standby: Flag to indicate if the cronjob should be synced to standby RP
                            Default: False 
            :param action: String Flag to indicate whether the croncmd should be added or deleted
@@ -916,140 +867,104 @@ class ZtpFunctions(ZtpHelpers):
                     { 'status': 'error/success' }
            :rtype: dict
         """
-        if croncmd is None:
-            self.syslogger.info("No cron job specified")
-            return {"status" : "error", "output" : ""}
+        if croncmd is None and cronfile is None:
+            self.syslogger.info("No cron job specified, specify either a croncmd or a cronfile")
+            return {"status" : "error"}
 
-        ## Create a Named temp file to help replace the current cronjob file
+        # By default cronfile is selected if provided. NO CHECKS will be made on the cronfile, make
+        # sure the supplied cronfile is correct.
+      
 
-        
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            cmd = "crontab -l > " + str(f.name)
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-            out, err = process.communicate()
-
-            if process.returncode:
-                self.syslogger.info("Failed to dump current crontab into Temp file")
-                return {"status" : "error"}
-            else:
-                f.flush()
-                f.seek(0, 0)
-                cronlines = [line.rstrip() for line in f.readlines()]
-                # Check that croncmd appears in the current crontab
-                if croncmd in cronlines:
-                    # croncmd already exists in existing crontab
-                    if action == "add":
-                        self.syslogger.info("cronjob already present, skipping add")
-                        return {"status" : "success"}
-                    elif action == "delete":
-                        # Remove the croncmd from crontab list - deletes all occurences
-                        cronlines[:] = (line for line in cronlines if line != croncmd)
-                        self.syslogger.info("Deleting cronjob as instructed")
-                        # Dial back to the beginning of the file
-                        f.seek(0,0) 
-                        for line in cronlines:
-                            f.write(str(line) + '\n')
-                        f.truncate()
-                        f.flush()
-                        f.seek(0,0)
+        if action == "add":
+            if cronfile is not None:
+                ztp_cronfile = "/etc/cron.d/"+ os.path.basename(cronfile)
+                try:
+                    shutil.copy(cronfile, ztp_cronfile)
+                    self.syslogger.info("Successfully added cronfile "+str(cronfile)+" to /etc/cron.d")
+                    # Set valid permissions on the cron file
+                    if not self.run_bash("chmod 0644 "+ ztp_cronfile)["status"]:
+                        self.syslogger.info("Successfully set permissions on cronfile " + ztp_cronfile)
                     else:
-                        self.syslogger.info("Invalid action specified. Choose between \"add\" and \"delete\"")
+                        self.syslogger.info("Failed to set permissions on the cronfile")
                         return {"status" : "error"}
-                else:
-                    if action == "add":
-                        # Move to the end of the file before adding the croncmd
-                        f.seek(0, os.SEEK_END)
-                        f.write(str(croncmd) + '\n')
-                        # flush and  write to disk
-                        f.flush()
-                        f.seek(0,0) 
-                        self.syslogger.info("Adding Cronjob as instructed")
-
-
-                        # Add the croncmd to /etc/tmpdir_cleanup.crontab otherwise the init
-                        # scripts will replace the crontab on reboot. This is a BUG and will be fixed.
-
-                        with open("/etc/tmpdir_cleanup.crontab", "a") as buggy_crontab:
-                            buggy_crontab.write(str(croncmd) + '\n')
-
-                    elif action == "delete":
-                        self.syslogger.info("cronjob doesn't exist already, skipping delete")
-                        return {"status" : "success"}
-
-                    else:
-                        self.syslogger.info("Invalid action specified. Choose between \"add\" and \"delete\"")
-                        return {"status" : "error"}
-
-
-                self.syslogger.info("Updating the crontab")
-                cmd = "crontab " + str(f.name)
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-                out, err = process.communicate()
-
-                if process.returncode:
-                    self.syslogger.info("Failed to update crontab "+str(out))
-                    return {"status" : "error"}
-
-
-                self.syslogger.info("Dumping the updated crontab")
-                cmd = "crontab -l" 
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-                out, err = process.communicate()
-
-                if process.returncode:
-                    self.syslogger.info("Failed to fetch updated crontab")
-                    return {"status" : "error"}
-
-
-                # Seek back to the beginning of the temp file before issuing a read
-                f.seek(0,0)
-
-
-                if f.read() == out:
-                    self.syslogger.info("Cronjob updated on active RP!")
-                else:
-                    self.syslogger.info("Failed to modify crontab on active RP!")
-                    return {"status" : "error"}
-    
-                if standby:
-                    #User requested to create the same cron job on the standby 
-                    # First sync the tempfile to the standby
-                    if self.scp_to_standby(f.name, f.name)["status"] == "success":
-                        # Now execute the remote command to sync crontab
-                        cmd = "crontab  " + str(f.name)
-                        result = self.execute_cmd_on_standby(cmd)
-                        if result["status"] == "success":
-                            #remove tempfile from standby
-                            remove = self.execute_cmd_on_standby("rm "+str(f.name))#
-                            if remove["status"] == "success":
-                                self.syslogger.info("Cronjob updated on standby RP!")
-
-                                # Add the croncmd to /etc/tmpdir_cleanup.crontab otherwise the init
-                                # scripts will replace the crontab on reboot. This is a BUG and will be fixed.
-                                buggy_fname = "/etc/tmpdir_cleanup.crontab"
-                                if self.scp_to_standby(buggy_fname, buggy_fname)["status"] == "success":
-                                    self.syslogger.info("Successfully modified /etc/tmpdir_cleanup.crontab on standby "+ str(result["output"]))
-                                else:
-                                    self.syslogger.info("Failed to modify /etc/tmpdir_cleanup.crontab on standby"+ str(result["output"]))
-                                    return {"status" : "error"}
-
-                                return {"status" : "success"}
-                            else:
-                                return {"status" : "success", "warning" : "failed to remove tempfile on standby"}
+                    if standby:
+                        if self.scp_to_standby(ztp_cronfile, ztp_cronfile)["status"]:
+                            self.syslogger.info("Cronfile "+ ztp_cronfile+" synced to standby RP!")
                         else:
-                            self.syslogger.info("Failed to modify crontab on standby: "+ str(result["output"]))
-                            #remove tempfile from standby despite failure
-                            remove = self.execute_cmd_on_standby("rm "+str(f.name))
-                            if remove["status"] == "success":
-                                return {"status" : "error"}
-                            else:
-                                return {"status" : "error", "warning" : "failed to remove tempfile on standby"}
+                            self.syslogger.info("Failed to sync cronfile "+ztp_cronfile+" on standby: "+ str(result["output"]))
+                            return {"status" : "error"} 
+                except Exception as e:
+                    self.syslogger.info("Failed to copy supplied cronfile "+ztp_cronfile+" to /etc/cron.d")
+                    self.syslogger.info("Error is "+ str(e))
+                    return {"status" : "error"} 
+            else:
+                # Let's create a file with the required croncmd 
 
+                if croncmd_fname is None:
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    ztp_cronfile = "/etc/cron.d/ztp_cron_"+timestamp
+                else:
+                    ztp_cronfile = "/etc/cron.d/"+str(croncmd_fname)
+
+                try:
+                    with open(ztp_cronfile, "w") as fd:
+                        fd.write(str(croncmd) + '\n')        
+                    self.syslogger.info("Successfully wrote croncmd "+str(croncmd)+" to file"+ztp_cronfile) 
+
+                    # Set valid permissions on the cron file
+                    if not self.run_bash("chmod 0644 "+ ztp_cronfile)["status"] == "success":
+                        self.syslogger.info("Successfully set permissions on cronfile " + ztp_cronfile)
                     else:
-                        self.syslogger.info("Failed to transfer modified crontab to standby")
+                        self.syslogger.info("Failed to set permissions on the cronfile")
                         return {"status" : "error"}
 
-                return {"status" : "success"}
+                    if standby:
+                        if self.scp_to_standby(ztp_cronfile, ztp_cronfile)["status"] == "success":
+                            self.syslogger.info("Cronfile "+ ztp_cronfile+" synced to standby RP!")
+                        else:
+                            self.syslogger.info("Failed to sync cronfile "+ztp_cronfile+" on standby: "+ str(result["output"]))
+                            return {"status" : "error"}
+
+                except Exception as e:
+                    self.syslogger.info("Failed to write supplied croncmd "+str(croncmd)+" to file "+ztp_cronfile)
+                    self.syslogger.info("Error is "+ str(e))
+                    return {"status" : "error"}
+
+
+        elif action == "delete":
+            # Delete any ztp_cron_timestamp files under /etc/cron.d if no specific file is specified.
+            # if cronfile is specified, remove cronfile
+            # if croncmd_fname is specified, remove /etc/cron.d/croncmd_fname
+            # Else Delete any ztp_cron_timestamp files under /etc/cron.d if no specific file/filename is specified. 
+
+            ztp_cronfiles = []
+            if cronfile is not None:
+                ztp_cronfiles.append("/etc/cron.d/"+str(os.path.basename(cronfile)))
+            elif croncmd_fname is not None:
+                ztp_cronfiles.append("/etc/cron.d/"+str(croncmd_fname))
+            else:
+                # Remove all ztp_cron_* files under /etc/cron.d
+                for f in os.listdir("/etc/cron.d"):
+                    if re.search("ztp_cron_", f):
+                        ztp_cronfiles.append(os.path.join("/etc/cron.d", f))
+        
+            for ztp_cronfile in ztp_cronfiles:
+                try:
+                    os.remove(ztp_cronfile)
+                    self.syslogger.info("Successfully removed cronfile "+ ztp_cronfile)
+
+                    if self.execute_cmd_on_standby("rm "+ ztp_cronfile)["status"] == "success":
+                        self.syslogger.info("Successfully removed cronfile"+ztp_cronfile+" on standby")
+                    else:
+                        self.syslogger.info("Failed to remove cronfile"+ztp_cronfile+" on standby")
+                        return {"status" : "error"}
+                except Exception as e:
+                    self.syslogger.info("Failed to remove cronfile "+ ztp_cronfile)
+                    self.syslogger.info("Error is "+ str(e))
+                    return {"status" : "error"}
+
+        return {"status" : "success"}                        
+
 
 
     def is_ha_setup(self):
@@ -1102,6 +1017,8 @@ if __name__ == "__main__":
 
     # No Config applied yet, so start with global-vrf(default)"
     ztp_script.set_vrf("global-vrf")
+
+
 
 
     # Set the root user first. Always preferable so that the user can manually gain access to the router in case ZTP script aborts.
@@ -1388,8 +1305,9 @@ if __name__ == "__main__":
             ztp_script.syslogger.info("Failed to transfer cronjob script to standby")
             sys.exit(1)
 
+
     #Create the cron cmd 
-    croncmd = "* * * * * PATH=/sbin:/usr/sbin:/bin:/usr/bin:${PATH};/usr/bin/python " + str(filepath)
+    croncmd = "* * * * * root PATH=/sbin:/usr/sbin:/bin:/usr/bin:${PATH};/usr/bin/python " + str(filepath)
 
     # Set up cronjob on active and standby(if present)
 
