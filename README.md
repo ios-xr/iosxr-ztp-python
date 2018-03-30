@@ -21,11 +21,9 @@ from ztp_helper import ZtpHelpers
 You will find sample scripts to get you started at the root of this github repository.
 Specifically:
 
-*  **sample_ztp_script.py** : This is a sample ZTP script that creates an inherited class and runs some sample commands to show how XR CLI commands, syslog, error checking woul
-d work.
+*  **sample_ztp_script.py** : This is a sample ZTP script that creates an inherited class and runs some sample commands to show how XR CLI commands, syslog, error checking would work.
 
-*  **exhaustive_ztp_script.py** :  This is a much more exhaustive script. It actually solves a ZTP use case where the mgmt port is placed in a VRF, we enable moving across netw
-ork namespaces, set up cron jobs, work with active/standby RPs etc. Use this script to leverage some code pieces in your own script, if needed.
+*  **exhaustive_ztp_script.py** :  This is a much more exhaustive script. It actually solves a ZTP use case where the mgmt port is placed in a VRF, we enable moving across network namespaces, set up cron jobs, work with active/standby RPs etc. Use this script to leverage some code pieces in your own script, if needed.
 
 
 ## Library Methods:
