@@ -132,7 +132,18 @@ class ZtpHelpers(object):
 
         self.logger = logger
 
-
+    def read_in_chunks(self, file_object, chunk_size=1048576):
+        """generator to read the file in 1MB chunks
+           :param file_object: File to be read
+           :param chunk_size: Chunk size to read in every iteration
+           :type file_object: int
+           :type chunk_size: int
+        """
+        while True:
+            data = file_object.read(chunk_size)
+            if not data:
+                break
+            yield data
 
     def download_file(self, file_url, destination_folder):
         """Download a file from the specified URL
@@ -170,7 +181,8 @@ class ZtpHelpers(object):
                 destination_path = os.path.join(destination_folder, filename)
 
                 with open(destination_path, "w") as local_file:
-                    local_file.write(f.read())
+                    for chunk in self.read_in_chunks(f):
+                        local_file.write(chunk)
                 
             #handle errors
             except HTTPError, e:
