@@ -12,7 +12,7 @@
 """
 
 
-import os, sys, subprocess
+import os, sys, subprocess, hashlib
 import logging, logging.handlers
 from urllib2 import Request, urlopen, URLError, HTTPError
 import urlparse, posixpath, time, json
@@ -145,13 +145,15 @@ class ZtpHelpers(object):
                 break
             yield data
 
-    def download_file(self, file_url, destination_folder):
+    def download_file(self, file_url, destination_folder, md5sum=None):
         """Download a file from the specified URL
            :param file_url: Complete URL to download file 
            :param destination_folder: Folder to store the 
                                       downloaded file
+           :param md5sum: md5sum of file_url
            :type file_url: str
            :type destination_folder: str
+           :type md5sum: str
            :return: Dictionary specifying download success/failure
                     Failure => { 'status' : 'error' }
                     Success => { 'status' : 'success',
@@ -168,6 +170,9 @@ class ZtpHelpers(object):
 
             #create the url and the request
             req = Request(file_url)
+
+            # object for generating md5sum
+            hash_md5 = hashlib.md5()
         
             # Open the url
             try:
@@ -183,7 +188,31 @@ class ZtpHelpers(object):
                 with open(destination_path, "w") as local_file:
                     for chunk in self.read_in_chunks(f):
                         local_file.write(chunk)
-                
+                        # Update md5sum everytime the file is being written
+                        hash_md5.update(chunk)
+
+                md5sum_local = hash_md5.hexdigest()
+
+                if md5sum:
+                    self.syslogger.info("MD5 Sum of the downloaded file is: %s" % hash_md5.hexdigest())
+
+                    if self.debug:
+                        self.logger.debug("MD5 Sum of the downloaded file is: %s" % hash_md5.hexdigest())
+
+                    if md5sum != md5sum_local:
+                        if self.debug:
+                            self.logger.debug("MD5sums of downloaded file and remote file didn't match")
+
+                        self.syslogger.info("MD5sums of downloaded file and remote file didn't match")
+
+                        return {"status": "error"}
+
+                    else:
+                        if self.debug:
+                            self.logger.debug("MD5sums of downloaded file and remote file matched")
+
+                        self.syslogger.info("MD5sums of downloaded file and remote file matched")
+
             #handle errors
             except HTTPError, e:
                 if self.debug: 
