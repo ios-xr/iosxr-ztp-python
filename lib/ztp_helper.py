@@ -12,7 +12,7 @@
 """
 
 
-import os, sys, subprocess
+import os, sys, subprocess, hashlib
 import logging, logging.handlers
 from urllib2 import Request, urlopen, URLError, HTTPError
 import urlparse, posixpath, time, json
@@ -132,15 +132,30 @@ class ZtpHelpers(object):
 
         self.logger = logger
 
+    def read_in_chunks(self, file_object, chunk_size):
+        """generator to read the file in chunks
+           :param file_object: File to be read
+           :param chunk_size: Chunk size to read in every iteration
+           :type file_object: int
+           :type chunk_size: int
+        """
+        while True:
+            data = file_object.read(chunk_size)
+            if not data:
+                break
+            yield data
 
-
-    def download_file(self, file_url, destination_folder):
-        """Download a file from the specified URL
+    def download_file(self, file_url, destination_folder, md5sum=None, chunk_size=1048576):
+        """Download a file from the specified URL in chunks
            :param file_url: Complete URL to download file 
            :param destination_folder: Folder to store the 
                                       downloaded file
+           :param md5sum: md5sum of file_url
+           :param chunk_size: Chunk size to be read in every read() call
            :type file_url: str
            :type destination_folder: str
+           :type md5sum: str
+           :type chunk_size: int
            :return: Dictionary specifying download success/failure
                     Failure => { 'status' : 'error' }
                     Success => { 'status' : 'success',
@@ -157,6 +172,9 @@ class ZtpHelpers(object):
 
             #create the url and the request
             req = Request(file_url)
+
+            # object for generating md5sum
+            hash_md5 = hashlib.md5()
         
             # Open the url
             try:
@@ -170,8 +188,35 @@ class ZtpHelpers(object):
                 destination_path = os.path.join(destination_folder, filename)
 
                 with open(destination_path, "w") as local_file:
-                    local_file.write(f.read())
-                
+                    for chunk in self.read_in_chunks(f, chunk_size):
+                        local_file.write(chunk)
+                        # Update md5sum everytime the file is being written
+                        hash_md5.update(chunk)
+
+                md5sum_local = hash_md5.hexdigest()
+
+                if md5sum:
+                    self.syslogger.info("MD5 Sum of the downloaded file is: %s" % hash_md5.hexdigest())
+                    self.syslogger.info("MD5 Sum of the remote file is: %s" % md5sum)
+
+                    if self.debug:
+                        self.logger.debug("MD5 Sum of the downloaded file is: %s" % hash_md5.hexdigest())
+                        self.logger.debug("MD5 Sum of the remote file is: %s" % md5sum)
+
+                    if md5sum != md5sum_local:
+                        if self.debug:
+                            self.logger.debug("MD5sums of downloaded file and remote file didn't match")
+
+                        self.syslogger.info("MD5sums of downloaded file and remote file didn't match")
+
+                        return {"status": "error"}
+
+                    else:
+                        if self.debug:
+                            self.logger.debug("MD5sums of downloaded file and remote file matched")
+
+                        self.syslogger.info("MD5sums of downloaded file and remote file matched")
+
             #handle errors
             except HTTPError, e:
                 if self.debug: 
@@ -184,9 +229,15 @@ class ZtpHelpers(object):
             except URLError, e:
                 if self.debug:
                     self.logger.debug("URL Error: %s, %s" % (e.reason , file_url))
-              
+
                 self.syslogger.info("URL Error: %s, %s" % (e.reason , file_url))
                 return {"status" : "error"}
+
+            except Exception as e:
+                if self.debug:
+                    self.logger.debug("Exception while downloading the file: %s" % (str(e)))
+
+                self.syslogger.info("Exception while downloading the file: %s" % (str(e)))
  
         return {"status" : "success", "filename": filename, "folder": destination_folder}
 
