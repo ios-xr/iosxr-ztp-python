@@ -135,7 +135,7 @@ point to a remote syslog Server or local file or default log-rotated log file.
 
 ```
            Apply Configuration to XR using a file 
-           :param file: Filepath for a config file
+           :param filename: Filepath for a config file
                         with the following structure: 
                         !
                         XR config command
@@ -176,7 +176,7 @@ point to a remote syslog Server or local file or default log-rotated log file.
 ```
            Replace XR Configuration using a file
 
-           :param file: Filepath for a config file
+           :param filename: Filepath for a config file
                         with the following structure:
 
                         !
