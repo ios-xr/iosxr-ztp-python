@@ -430,9 +430,9 @@ class ZtpHelpers(object):
 
     def xrapply(self, filename=None, reason=None, extra_auth=False):
         """Apply Configuration to XR using a file
-
-           :param file: Filepath for a config file
-                        with the following structure:
+          
+           :param filename: Filepath for a config file
+                        with the following structure: 
 
                         !
                         XR config command
@@ -575,9 +575,9 @@ class ZtpHelpers(object):
 
     def xrreplace(self, filename=None, extra_auth=False):
         """Replace XR Configuration using a file
-
-           :param file: Filepath for a config file
-                        with the following structure:
+          
+           :param filename: Filepath for a config file
+                        with the following structure: 
 
                         !
                         XR config commands
