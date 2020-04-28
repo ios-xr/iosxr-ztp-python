@@ -2,14 +2,16 @@
 
 # Since /pkg/bin is not in default PYTHONPATH, the following 
 # two lines are necessary to be able to use the ztp_helper.py
-# library on the box
+# library on the box. You will need this library to access
+# helpful APIs to work with XR CLI (xrcmd, xrapply, xrreplace)
+# or netconf calls (xrnetconf - new in release 7.0.1)
 
 import sys
 sys.path.append("/pkg/bin/")
+from ztp_helper import ZtpHelpers
 
 
 import os, subprocess, shutil
-from ztp_helper import ZtpHelpers
 import re, datetime, json, tempfile, time
 from time import gmtime, strftime
 
