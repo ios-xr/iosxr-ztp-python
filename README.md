@@ -131,7 +131,7 @@ point to a remote syslog Server or local file or default log-rotated log file.
            :rtype: dict
 ```
 
-*  **xrapply(self, filename=None, reason=None)**:  
+*  **xrapply(self, filename=None, reason=None, atomic=False)**:  
 
 ```
            Apply Configuration to XR using a file 
@@ -145,8 +145,13 @@ point to a remote syslog Server or local file or default log-rotated log file.
            :param reason: Reason for the config commit.
                           Will show up in the output of:
                           "show configuration commit list detail"
+           :param atomic: When set to True will do atomic commits.
+                          best-effort commits are done by default.
+                          In case of config failures the entire chunk
+                          of configs would not be applied.
            :type filename: str
            :type reason: str
+           :type atomic: bool
            :return: Dictionary specifying the effect of the config change
                      { 'status' : 'error/success', 'output': 'exec command based on status'}
                      In case of Error:  'output' = 'show configuration failed' 

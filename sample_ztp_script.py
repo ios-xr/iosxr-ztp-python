@@ -94,6 +94,13 @@ if __name__ == "__main__":
     out = ztp_script.xrapply_string("hostname customer2")
     pprint(out)
 
+    # xrapply with atomic option enabled on a successful case
+    with tempfile.NamedTemporaryFile(delete=True) as f:
+        f.write("%s" % config)
+        f.flush()
+        f.seek(0)
+        print ztp_script.xrapply(f.name, atomic=True)
+
     # Send syslogs to the preset syslog destinations (see above)
 
     print "\n###### Sending Syslogs to Server/file ######\n"
@@ -101,6 +108,19 @@ if __name__ == "__main__":
     ztp_script.syslogger.info(ztp_script.xrcmd({"exec_cmd" : "show running-config hostname"}))
 
     # Error handling
-
     print "\n###### Apply invalid configuration using a string ######\n"
     pprint(ztp_script.xrapply_string("hostnaime customer2"))
+
+    # xrapply with atomic option enabled on a failure case
+    config_negative = """key chain Bundle-Ether29-pri
+             no macsec
+             macsec
+             key f9d3f4f01a50517afb0000000000000000000000000000000000000000000000
+             key-string password 95157010155425f56085d070c751c1f5a4e077777777777777777777777774054435155545b5d515108074d41080e54515650045c5f07545e05004753010f5c53 cryptographic-algorithm aes-128-cmac
+             """
+
+    with tempfile.NamedTemporaryFile(delete=True) as f:
+        f.write("%s" % config_negative)
+        f.flush()
+        f.seek(0)
+        print ztp_script.xrapply(f.name, atomic=True)
