@@ -9,6 +9,8 @@ from pprint import pprint
 class ZtpFunctions(ZtpHelpers):
 
     def set_root_user(self):
+        # The hash for the password in config below translates to "lab"
+        # So root-user credentials will be netops/lab
         config = """ !
                      username netops
                      group root-lr
