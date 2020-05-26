@@ -160,7 +160,7 @@ if __name__ == "__main__":
         # then "if" condition above is true and ZTP script will continue doing other things.
 
         # Reload box to iPXE
-
+        ztp_script.syslogger.info("Initiating iPXE reboot to change image")
         #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "hw-module location all bootmedia network reload",
         #                                   "prompt_response" : "yes\n"
         #                                 })
