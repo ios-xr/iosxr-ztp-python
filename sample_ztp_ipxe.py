@@ -15,7 +15,7 @@ from ztp_helper import ZtpHelpers
 ROOT_LR_USER = "netops"
 ROOT_USER_CREDENTIALS = "$1$7kTu$zjrgqbgW08vEXsYzUycXw1"
 #EXPECTED_VERSION = "7.1.1.108I"
-EXPECTED_VERSION = "6.6.3.19"
+EXPECTED_VERSION = "6.6.3.19I"
 
 class ZtpFunctions(ZtpHelpers):
 
@@ -144,9 +144,9 @@ if __name__ == "__main__":
     # Check current version running on the system
     show_version = ztp_script.xrcmd({"exec_cmd" : "show version"})
 
-    version = show_version["output"][0].split(",")[1].split()[1] 
+    version = show_version["output"][7].split(":")[1].strip() 
 
-    if "version" is EXPECTED_VERSION:
+    if "version" == EXPECTED_VERSION:
         ztp_script.syslogger.info("Expected Version "+str(EXPECTED_VERSION)+" is running, continue and do other tasks")
        
         # Do other tasks here....
@@ -171,6 +171,4 @@ if __name__ == "__main__":
             sys.exit(1)
         else:
             ztp_script.syslogger.info("Box already rebooting by now, so this message might not go out")
-            
-
-
+           
