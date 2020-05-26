@@ -16,6 +16,7 @@ import re, datetime, json, tempfile, time
 from time import gmtime, strftime
 
 ROOT_USER = "vagrant"
+# Password HASH below translates to "vagrant"
 ROOT_USER_CREDENTIALS = "$1$FzMk$Y5G3Cv0H./q0fG.LGyIJS1" 
 ROOT_USER_CLEARTEXT = "vagrant"
 SERVER_URL = "http://11.11.11.2:9090/"
