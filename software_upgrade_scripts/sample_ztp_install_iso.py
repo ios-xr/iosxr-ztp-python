@@ -388,23 +388,9 @@ if __name__ == "__main__":
         sys.exit(0)
 
     else:
-        # If choosing to change Release using iPXE, reboot box to iPXE mode here
-        # After the box does iPXE it will rerun ZTP, if the image version is correct the second time
-        # then "if" condition above is true and ZTP script will continue doing other things.
-
-        # Reload box to iPXE
-
-        #ztp_script.syslogger.info("Initiating iPXE reboot to change image")
-        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "hw-module location all bootmedia network reload",
-        #                                   "prompt_response" : "yes\n"
-        #                                 })
-        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "show platform"})
-
-        #if ipxe_reboot["status"] == "error":
-        #    ztp_script.syslogger.info("Failed to reboot box to iPXE, erroring out")
-        #    sys.exit(1)
-        #else:
-        #    ztp_script.syslogger.info("Box already rebooting by now, so this message might not go out")
+        # Setting routine_upgrade to False. This will wipe out config ensuring ZTP runs again
+        # post upgrade/downgrade. If set to True, it can be used to upgrade/downgrade software
+        # as part of automation without running ZTP post reboot.
         
         result = ztp_script.install_xr_add_activate_iso(iso_url=ISO_URL, routine_upgrade=False)
 
