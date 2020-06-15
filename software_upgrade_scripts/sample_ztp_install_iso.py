@@ -4,15 +4,6 @@
 # two lines are necessary to be able to use the ztp_helper.py
 # library on the box
 
-# This script is used to check the current version of the image on the box
-# and if it matches the expected version an install commit is issued for any 
-# prior upgrades followed by user defined steps.
-# If the current version does not match the expected version, then a fresh
-# ISO is installed from a known URL and XR install add/activate is used to
-# upgrade/downgrade to the specified ISO
-
-
-
 import sys
 sys.path.append("/pkg/bin/")
 
@@ -28,11 +19,11 @@ ROOT_LR_USER = "netops"
 ROOT_USER_CREDENTIALS = "$1$7kTu$zjrgqbgW08vEXsYzUycXw1"
 SERVER_URL = "http://192.168.152.2:9090/"
 
-#EXPECTED_VERSION = "7.1.1.108I"
-#ISO_URL = SERVER_URL + "ncs5500-711/ncs5500-goldenk9-x-7.1.1.108I-0.iso"
+EXPECTED_VERSION = "7.1.1.108I"
+ISO_URL = SERVER_URL + "ncs5500-711/ncs5500-full-x-7.1.1.108I.iso"
 
-EXPECTED_VERSION = "6.6.3.19I"
-ISO_URL = SERVER_URL + "663-19I/ncs5500-fullk9-x.iso"
+#EXPECTED_VERSION = "6.6.3.19I"
+#ISO_URL = SERVER_URL + "663-19I/ncs5500-fullk9-x.iso"
 
 
 
@@ -69,11 +60,11 @@ class ZtpFunctions(ZtpHelpers):
         return result
 
 
-    def commit_replace_empty(self):
+    def remove_username(self):
         config = """ !
-                     hostname ios
+                     no username %s 
                      !
-                     end"""
+                     end""" % (ROOT_LR_USER)
 
 
 
@@ -81,16 +72,13 @@ class ZtpFunctions(ZtpHelpers):
             f.write("%s" % config)
             f.flush()
             f.seek(0)
-            result = self.xrreplace(f.name)
+            result = self.xrapply(f.name)
 
         if result["status"] == "error":
 
-            self.syslogger.info("Failed to wipe out configuration: "+json.dumps(result))
+            self.syslogger.info("Failed to remove username configuration: "+json.dumps(result))
 
         return result
-
-
-
 
     def install_xr_add_activate_iso(self, iso_url, routine_upgrade=True):
         """ Method to upgrade/downgrade XR ISO through initial download followed
@@ -100,9 +88,6 @@ class ZtpFunctions(ZtpHelpers):
             :param iso_url: Complete URL of the iso to be downloaded
                                 and installed
             :type iso_url: str
-            :param routine_upgrade: Flag to wipe out config before activating ISO (False)
-                                    or directly activate without touching config (True)
-            :type boolean
             :return: Dictionary specifying success/error and an associated message
                      {'status': 'success/error',
                       'output': 'success/error message',
@@ -201,8 +186,8 @@ class ZtpFunctions(ZtpHelpers):
 
             # To trigger ZTP post upgrade, must do a commit replace before activating
             if not routine_upgrade:
-                commit_replace = self.commit_replace_empty()
-                if commit_replace["status"] == "error":
+                username_wipeout = self.remove_username()
+                if username_wipeout["status"] == "error":
                     self.syslogger.info("Aborting install activate of iso, failed to wipe out config...")
                     result["status"] = "error"
                     result["output"] = "Aborting install activate of iso, failed to wipe out config"
@@ -212,19 +197,6 @@ class ZtpFunctions(ZtpHelpers):
                     except OSError:
                         result["warning"] = "failed to remove iso from path: "+str(iso_path)
                     return result
-                ##else:
-                #   ztp_clean = self.xrcmd({"exec_cmd" : "ztp clean noprompt"})
-                #    if ztp_clean["status"] == "error":
-                #        self.syslogger.info("Aborting install activate of iso, failed to clean ZTP state...")
-                #        result["status"] = "error"
-                #        result["output"] = "Aborting install activate of iso, failed to clean ZTP state"
-                #        # Cleanup
-                #        try:
-                #           os.remove(iso_path)
-                #        except OSError:
-                #            result["warning"] = "failed to remove iso from path: "+str(iso_path)
-                #        return result
-
                      
 
             # Now activate the iso
@@ -408,9 +380,24 @@ if __name__ == "__main__":
         sys.exit(0)
 
     else:
-        # Setting routine_upgrade to False. This will wipe out config ensuring ZTP runs again
-        # post upgrade/downgrade. If set to True, it can be used to upgrade/downgrade software
-        # as part of automation without running ZTP post reboot.
+        # If choosing to change Release using iPXE, reboot box to iPXE mode here
+        # After the box does iPXE it will rerun ZTP, if the image version is correct the second time
+        # then "if" condition above is true and ZTP script will continue doing other things.
+
+        # Reload box to iPXE
+
+        #ztp_script.syslogger.info("Initiating iPXE reboot to change image")
+        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "hw-module location all bootmedia network reload",
+        #                                   "prompt_response" : "yes\n"
+        #                                 })
+        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "show platform"})
+
+        #if ipxe_reboot["status"] == "error":
+        #    ztp_script.syslogger.info("Failed to reboot box to iPXE, erroring out")
+        #    sys.exit(1)
+        #else:
+        #    ztp_script.syslogger.info("Box already rebooting by now, so this message might not go out")
+        
         result = ztp_script.install_xr_add_activate_iso(iso_url=ISO_URL, routine_upgrade=False)
 
         if result["status"] =="error":
@@ -423,4 +410,3 @@ if __name__ == "__main__":
             signal.pause()
              
     
-
