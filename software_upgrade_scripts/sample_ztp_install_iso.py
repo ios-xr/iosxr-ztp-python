@@ -7,6 +7,14 @@
 import sys
 sys.path.append("/pkg/bin/")
 
+
+# This script is used to check the current version of the image on the box
+# and if it matches the expected version an install commit is issued for any 
+# prior upgrades followed by user defined steps.
+# If the current version does not match the expected version, then a fresh
+# ISO is installed from a known URL and XR install add/activate is used to
+# upgrade/downgrade to the specified ISO
+
 import json, tempfile
 from pprint import pprint
 import os, subprocess, shutil
