@@ -161,10 +161,11 @@ if __name__ == "__main__":
 
         # Reload box to iPXE
         ztp_script.syslogger.info("Initiating iPXE reboot to change image")
-        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "hw-module location all bootmedia network reload",
-        #                                   "prompt_response" : "yes\n"
-        #                                 })
-        ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "show platform"})
+        ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "hw-module location all bootmedia network reload",
+                                           "prompt_response" : "yes\n"
+                                         })
+        
+        #ipxe_reboot = ztp_script.admincmd({"exec_cmd" : "show platform"})
 
         if ipxe_reboot["status"] == "error":
             ztp_script.syslogger.info("Failed to reboot box to iPXE, erroring out")
