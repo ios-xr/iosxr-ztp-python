@@ -13,11 +13,20 @@
 
  """
 
-import os, sys, subprocess, hashlib
-import logging, logging.handlers, re
-from urllib2 import Request, urlopen, URLError, HTTPError
-import urlparse, posixpath, time, json
+import hashlib
+import json
+import logging
+import logging.handlers
+import os
+import posixpath
+import re
+import subprocess
+import sys
+import time
 from ctypes import cdll
+
+import urlparse
+from urllib2 import HTTPError, Request, URLError, urlopen
 from ztp_netconf import *
 
 libc = cdll.LoadLibrary('libc.so.6')
