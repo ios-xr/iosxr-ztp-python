@@ -99,8 +99,13 @@ This class exposes the following methods and handles all the error handling:
            :param file_url: Complete URL to download file 
            :param destination_folder: Folder to store the 
                                       downloaded file
+           :param ca_cert: PEM encoded CA certificate location for HTTPS transactions
+           :param validate_server: When set to True, CA certificate must be provided for HTTPS.
+                                   To skip server validation, this parameter must be set to False.
            :type file_url: str
            :type destination_folder: str
+           :type ca_cert: str
+           :type validate_server: bool
            :return: Dictionary specifying download success/failure
                     Failure => { 'status' : 'error' }
                     Success => { 'status' : 'success',
@@ -313,6 +318,17 @@ Building configuration...
             'hostnaime customer2'],
  'status': 'error'}
 [apple2:~]$ 
+
+###### Downloading file from HTTP server ######
+
+2020-06-16 04:07:30,493 - DebugZTPLogger - DEBUG - Downloading file ztp.script from URL:http://1.2.29.64/sj21-ddd-01-07/ztp.script
+{'status': 'success', 'folder': '/disk0:/ztp/tmp', 'filename': 'ztp.script'}
+
+###### Downloading file from HTTPS server ######
+
+2020-06-16 04:07:30,510 - DebugZTPLogger - DEBUG - Downloading file get-report from URL:https://1.2.29.64:5000/get-report
+{'status': 'success', 'folder': '/disk0:/ztp/tmp', 'filename': 'get-report'}
+
 ```
 
 

@@ -8,7 +8,7 @@
 
    ZTP helper for Python
 
-   Copyright (c) 2017-2019 by cisco Systems, Inc.
+   Copyright (c) 2017-2020 by cisco Systems, Inc.
    All rights reserved.
 
  """
@@ -20,7 +20,6 @@ import os
 import posixpath
 import re
 import subprocess
-import sys
 import time
 from ctypes import cdll
 
@@ -155,17 +154,23 @@ class ZtpHelpers(object):
                       file_url,
                       destination_folder,
                       md5sum=None,
-                      chunk_size=1048576):
+                      chunk_size=1048576,
+                      ca_cert=None,
+                      validate_server=True):
         """Download a file from the specified URL
            :param file_url: Complete URL to download file
            :param destination_folder: Folder to store the
                                       downloaded file
            :param md5sum: md5sum of file_url
            :param chunk_size: Chunk size to be read in every read() call
+           :param ca_cert: Certificate file used to validate in case of https
+           :param validate_server: Validate https transactions
            :type file_url: str
            :type destination_folder: str
            :type md5sum: str
            :type chunk_size: int
+           :type ca_cert: str
+           :type validate_server: bool
            :return: Dictionary specifying download success/failure
                     Failure => { 'status' : 'error' }
                     Success => { 'status' : 'success',
@@ -180,6 +185,22 @@ class ZtpHelpers(object):
             path = urlparse.urlsplit(file_url).path
             filename = posixpath.basename(path)
 
+            ctx = None
+            if urlparse.urlparse(file_url).scheme == 'https':
+                if validate_server:
+                    if not ca_cert:
+                        if self.debug:
+                            self.logger.debug("Certificate not provided to validate server")
+                        self.syslogger.info("Certificate not provided to validate server")
+                        return {"status": "error"}
+
+                    ctx = ssl.create_default_context(cafile=ca_cert)
+
+                else:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+
             #create the url and the request
             req = Request(file_url)
 
@@ -187,7 +208,7 @@ class ZtpHelpers(object):
 
             # Open the url
             try:
-                f = urlopen(req)
+                f = urlopen(req, context=ctx)
                 self.syslogger.info(
                     "Downloading file %s from URL:%s" % (filename, file_url))
 
@@ -435,7 +456,7 @@ class ZtpHelpers(object):
 
         return {"status": status, "output": output}
 
-    def xrapply(self, filename=None, reason=None, extra_auth=False):
+    def xrapply(self, filename=None, reason=None, extra_auth=False, atomic=False):
         """Apply Configuration to XR using a file
 
            :param filename: Filepath for a config file
@@ -479,8 +500,12 @@ class ZtpHelpers(object):
         if reason is not None:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_with_reason \"" + str(
                 reason) + "\" " + filename
+            if atomic:
+                cmd += " " + "atomic"
         elif extra_auth:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_with_extra_auth " + filename
+        elif atomic:
+            cmd = "source /pkg/bin/ztp_helper.sh && xrapply " + filename + " " + "atomic"
         else:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply " + filename
 
@@ -711,6 +736,25 @@ class ZtpHelpers(object):
 
         return {"status": status, "output": output}
 
+    def ztp_enable(self):
+        """
+        Enables ZTP
+        :return: Return a dictionary with status and output
+                    { 'status': 'error/success', 'output': '' }
+        :rtype: dict
+        """
+        return self.xrcmd({'exec_cmd': 'ztp enable noprompt'})
+
+    def ztp_disable(self):
+        """
+        Disables ZTP
+        :return: Return a dictionary with status and output
+                    { 'status': 'error/success', 'output': '' }
+        :rtype: dict
+        """
+        return self.xrcmd({'exec_cmd': 'ztp disable noprompt'})
+
+
     class ZtpNetconfHelper(object):  # Child object, member of ZtpHelpers
         def __init__(self, logger, nc_handle=None):
             # logger init
@@ -730,18 +774,44 @@ class ZtpHelpers(object):
                :rtype: True on success
             """
             retry_count = 1
+            self.configFile = "/tmp/nf.cfg"
             self.ztpHelpers = ZtpHelpers()
-            ret = self.ztpHelpers.xrapply_string("netconf-yang agent ssh")
-            self.logger.debug("netconf init attempt: %s" % retry_count)
-            while ((ret['status'] is 'error') and (retry_count <= 3)):
-                retry_count += 1
-                ret = self.ztpHelpers.xrapply_string("netconf-yang agent ssh")
-                self.logger.debug("netconf init attempt: %s" % retry_count)
 
+            try:
+               with open(self.configFile, 'w') as fio:
+                  fio.write("netconf-yang agent ssh")
+                  fio.close()
+            except IOError:
+               self.logger.debug("Failed to write config to a file")
+               return False
+
+            self.logger.debug("netconf init attempt: %s" % retry_count)
+            ret = self.ztpHelpers.xrapply(self.configFile)
+            while ((ret['status'] is 'error') and (retry_count <= 3)):
+                self.logger.debug("netconf init attempt: %s" % retry_count)
+                ret = self.ztpHelpers.xrapply(self.configFile)
+                retry_count += 1
+
+            os.remove(self.configFile)
             if (ret['status'] is 'error' and retry_count == 3):
                 return False
-            time.sleep(20)  # need to root-cause the delay
+
+            tries = 12
+            procStatus = False
+            for i in range(tries):
+               proc = subprocess.Popen("ip netns exec xrnns /pkg/bin/show_netconf_agent status | grep state | grep ready", stdout=subprocess.PIPE, shell=True)
+               (out, err) = proc.communicate()
+               out = out.decode().strip().split()[-1] if out else ''
+               if out.strip() == "ready":
+                  procStatus = True
+                  break
+               else:
+                  time.sleep(5)
+            if not procStatus:
+               self.logger.debug("Netconf yang agent failed to come up")
+               return False
             self.logger.debug("Netconf yang agent is up")
+            return True
 
         def clientOperate(self, log, request, response):
             """
@@ -770,7 +840,7 @@ class ZtpHelpers(object):
                         self.logger.debug(
                             "File download failed for Netconf Operation, Abort!"
                         )
-                        sys.exit(0)
+                        return False
                     self.logger.debug("Config File download successful")
                     filePath = rc["folder"] + rc["filename"]
                     with open(filePath, 'r') as configFile:

@@ -126,3 +126,20 @@ if __name__ == "__main__":
         f.flush()
         f.seek(0)
         print ztp_script.xrapply(f.name, atomic=True)
+
+    # HTTP file download
+    print "\n###### Downloading file from HTTP server ######\n"
+    print ztp_script.download_file(file_url='http://1.2.29.64/sj21-ddd-01-07/ztp.script',
+                                   destination_folder='/disk0:/ztp/tmp')
+
+    # HTTPS file download with certificate validation
+    print "\n###### Downloading file from HTTPS server ######\n"
+    print ztp_script.download_file(file_url='https://1.2.29.64:5000/get-report',
+                                   destination_folder='/disk0:/ztp/tmp',
+                                   ca_cert='/disk0:/ztp/tmp/cacert.pem')
+
+    # HTTPS file download without certificate validation
+    print "\n###### Downloading file from HTTPS server ######\n"
+    print ztp_script.download_file(file_url='https://1.2.29.64:5000/get-report',
+                                   destination_folder='/disk0:/ztp/tmp',
+                                   validate_server=False)
