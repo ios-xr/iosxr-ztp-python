@@ -35,7 +35,7 @@ CLONE_NEWNET = 0x40000000
 
 
 class ZtpHelpers(object):
-    def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None):
+    def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None, debug=False):
         """__init__ constructor
            :param syslog_server: IP address of reachable Syslog Server
            :param syslog_port: Port for the reachable syslog server
@@ -54,7 +54,7 @@ class ZtpHelpers(object):
         self.syslog_file = syslog_file
         self.setup_syslog()
         self.setup_debug_logger()
-        self.debug = False
+        self.debug = debug
 
         #initialize netconf related variables
         self.netconf = self.ZtpNetconfHelper(self.logger)
