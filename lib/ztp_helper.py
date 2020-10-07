@@ -29,7 +29,6 @@ from urllib2 import HTTPError, Request, URLError, urlopen
 from ztp_netconf import *
 
 libc = cdll.LoadLibrary('libc.so.6')
-_setns = libc.setns
 
 CLONE_NEWNET = 0x40000000
 
@@ -71,7 +70,7 @@ class ZtpHelpers(object):
                   CLONE_NEWNET = 0x40000000 (since Linux 3.0)
                          fd must refer to a network namespace.
         """
-        _setns(fd.fileno(), nstype)
+        libc.setns(fd.fileno(), nstype)
 
     @classmethod
     def get_netns_path(cls, nspath=None, nsname=None, nspid=None):
