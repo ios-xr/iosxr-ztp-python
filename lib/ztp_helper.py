@@ -428,11 +428,11 @@ class ZtpHelpers(object):
 
         return {"status": status, "output": output}
 
-    def xrapply(self, filename=None, reason=None, extra_auth=False):
+    def xrapply(self, filename=None, reason=None, extra_auth=False, atomic=False):
         """Apply Configuration to XR using a file
-          
+
            :param filename: Filepath for a config file
-                        with the following structure: 
+                        with the following structure:
 
                         !
                         XR config command
@@ -446,6 +446,10 @@ class ZtpHelpers(object):
            :type filename: str
            :type reason: str
            :type extra_auth: bool
+           :param atomic: When set to True will do atomic commits.
+                          best-effort commits are done by default.
+                          In case of config failures the entire chunk
+                          of configs would not be applied.
            :return: Dictionary specifying the effect of the config change
                      { 'status' : 'error/success', 'output': 'exec command based on status'}
                      In case of Error:  'output' = 'show configuration failed'
@@ -472,8 +476,12 @@ class ZtpHelpers(object):
         if reason is not None:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_with_reason \"" + str(
                 reason) + "\" " + filename
+            if atomic:
+                cmd += " " + "atomic"
         elif extra_auth:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_with_extra_auth " + filename
+        elif atomic:
+            cmd = "source /pkg/bin/ztp_helper.sh && xrapply " + filename + " " + "atomic"
         else:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply " + filename
 
