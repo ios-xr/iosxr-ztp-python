@@ -24,6 +24,8 @@ from time import gmtime, strftime
 import signal 
 
 ROOT_LR_USER = "netops"
+# The hash for the password below translates to "lab"
+# So root-user credentials will be netops/lab  
 ROOT_USER_CREDENTIALS = "$1$7kTu$zjrgqbgW08vEXsYzUycXw1"
 SERVER_URL = "http://192.168.152.2:9090/"
 
