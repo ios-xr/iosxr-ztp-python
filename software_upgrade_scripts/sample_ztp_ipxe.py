@@ -13,6 +13,8 @@ import os, subprocess, shutil
 from ztp_helper import ZtpHelpers
 
 ROOT_LR_USER = "netops"
+# The hash for the password below translates to "lab"
+# So root-user credentials will be netops/lab   
 ROOT_USER_CREDENTIALS = "$1$7kTu$zjrgqbgW08vEXsYzUycXw1"
 EXPECTED_VERSION = "7.1.1.108I"
 #EXPECTED_VERSION = "6.6.3.19I"
