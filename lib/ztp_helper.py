@@ -416,8 +416,7 @@ class ZtpHelpers(object):
 
         if not isinstance(cmd, dict):
             return {
-                "status":
-                "error",
+                "status": "error",
                 "output":
                 "Dictionary expected as cmd argument, see method documentation"
             }
