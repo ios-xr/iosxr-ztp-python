@@ -27,7 +27,10 @@ from ctypes import cdll
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .error import ErrorCode
+
 from ztp_netconf import *
+
 
 libc = cdll.LoadLibrary('libc.so.6')
 _setns = libc.setns
@@ -108,8 +111,7 @@ class ZtpHelpers(object):
 
     def set_vrf(self, vrfname=None):
         """Set the VRF (network namespace)
-           :param vrfname: Network namespace name
-                           corresponding to XR VRF
+           :param vrfname: Network namespace name corresponding to XR VRF
         """
         if vrfname is not None:
             self.vrf = vrfname
@@ -140,7 +142,7 @@ class ZtpHelpers(object):
 
         self.logger = logger
 
-    def read_in_chunks(self, file_object, chunk_size):
+    def _read_in_chunks(self, file_object, chunk_size):
         """generator to read the file in chunks
            :param file_object: File to be read
            :param chunk_size: Chunk size to read in every iteration
@@ -192,10 +194,9 @@ class ZtpHelpers(object):
             if urllib.parse.urlparse(file_url).scheme == 'https':
                 if validate_server:
                     if not ca_cert:
-                        if self.debug:
-                            self.logger.debug("Certificate not provided to validate server")
+                        self.logger.info("Certificate not provided to validate server")
                         self.syslogger.info("Certificate not provided to validate server")
-                        return {"status": "error"}
+                        return {"status": "error", "output": ErrorCode.INVALID_CA_CERTIFICATE}
 
                     ctx = ssl.create_default_context(cafile=ca_cert)
 
@@ -209,8 +210,7 @@ class ZtpHelpers(object):
 
             hash_md5 = hashlib.md5()
 
-            # Open the url
-            try:
+            def _download():
                 f = urlopen(req, context=ctx)
                 self.syslogger.info(
                     "Downloading file %s from URL:%s" % (filename, file_url))
@@ -223,7 +223,7 @@ class ZtpHelpers(object):
                 destination_path = os.path.join(destination_folder, filename)
 
                 with open(destination_path, "w") as local_file:
-                    for chunk in self.read_in_chunks(f, chunk_size):
+                    for chunk in self._read_in_chunks(f, chunk_size):
                         local_file.write(chunk)
                         hash_md5.update(chunk)
 
@@ -237,14 +237,11 @@ class ZtpHelpers(object):
 
                     if self.debug:
                         self.logger.debug(
-                            "MD5 Sum of the downloaded file is: %s" %
-                            md5sum_local)
-                        self.logger.debug(
-                            "MD5 Sum of the remote file is: %s" % md5sum)
+                            "MD5 Sum of the downloaded file: %s, remote file: %s" %
+                            (md5sum_local, md5sum))
 
                     if md5sum != md5sum_local:
-                        if self.debug:
-                            self.logger.debug(
+                        self.logger.error(
                                 "MD5sums of downloaded file and remote file didn't match"
                             )
 
@@ -252,7 +249,7 @@ class ZtpHelpers(object):
                             "MD5sums of downloaded file and remote file didn't match"
                         )
 
-                        return {"status": "error"}
+                        return {"status": "error", "output": ErrorCode.DOWNLOAD_FAILED_MD5_MISMATCH}
 
                     else:
                         if self.debug:
@@ -264,32 +261,30 @@ class ZtpHelpers(object):
                             "MD5sums of downloaded file and remote file matched"
                         )
 
+            # Open the url
+            try:
+                _download()
+
             #handle errors
             except HTTPError as e:
-                if self.debug:
-                    self.logger.debug("HTTP Error: %s, %s" % (e.code, file_url))
-
+                self.logger.error("HTTP Error: %s, %s" % (e.code, file_url))
                 self.syslogger.info("HTTP Error: %s, %s" % (e.code, file_url))
-
-                return {"status": "error"}
+                return {"status": "error", "output":ErrorCode.DOWNLOAD_FAILED}
 
             except URLError as e:
-                if self.debug:
-                    self.logger.debug(
+                self.logger.error(
                         "URL Error: %s, %s" % (e.reason, file_url))
 
                 self.syslogger.info("URL Error: %s, %s" % (e.reason, file_url))
-                return {"status": "error"}
+                return {"status": "error", "output":ErrorCode.DOWNLOAD_FAILED}
 
             except Exception as e:
-                if self.debug:
-                    self.logger.debug(
-                        "Exception caught while downloading the file: %s" %
-                        (str(e)))
+                self.logger.error(
+                        "Exception caught while downloading the file: %s" % str(e))
 
                 self.syslogger.info(
-                    "Exception caught while downloading the file: %s" %
-                    (str(e)))
+                    "Exception caught while downloading the file: %s" % str(e))
+                return {"status": "error", "output":ErrorCode.DOWNLOAD_FAILED}
 
         return {
             "status": "success",
@@ -353,14 +348,12 @@ class ZtpHelpers(object):
         """
 
         if cmd is None:
-            return {"status": "error", "output": "No command specified"}
+            return {"status": "error", "output": ErrorCode.COMMAND_NOT_SPECIFIED}
 
         if not isinstance(cmd, dict):
             return {
-                "status":
-                "error",
-                "output":
-                "Dictionary expected as cmd argument, see method documentation"
+                "status": "error",
+                "output": ErrorCode.INVALID_INPUT_TYPE
             }
 
         status = "success"
@@ -409,16 +402,16 @@ class ZtpHelpers(object):
 	   :return: Return a dictionary with status and output
 		    { 'status': 'error/success', 'output': '' }
 	   :rtype: dict
-	"""
+	    """
 
         if cmd is None:
-            return {"status": "error", "output": "No command specified"}
+            return {"status": "error", "output": ErrorCode.COMMAND_NOT_SPECIFIED}
 
         if not isinstance(cmd, dict):
             return {
                 "status": "error",
                 "output":
-                "Dictionary expected as cmd argument, see method documentation"
+                ErrorCode.INVALID_INPUT_TYPE
             }
 
         status = "success"
