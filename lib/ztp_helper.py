@@ -8,16 +8,25 @@
 
    ZTP helper for Python
 
-   Copyright (c) 2017-2019 by cisco Systems, Inc.
+   Copyright (c) 2017-2021 by cisco Systems, Inc.
    All rights reserved.
 
  """
 
-import os, sys, subprocess, hashlib
-import logging, logging.handlers, re
-from urllib2 import Request, urlopen, URLError, HTTPError
-import urlparse, posixpath, time, json, ssl
+import hashlib
+import logging
+import logging.handlers
+import os
+import posixpath
+import re
+import ssl
+import subprocess
+import time
+import urllib.parse
 from ctypes import cdll
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 from ztp_netconf import *
 
 libc = cdll.LoadLibrary('libc.so.6')
@@ -176,11 +185,11 @@ class ZtpHelpers(object):
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)
 
-            path = urlparse.urlsplit(file_url).path
+            path = urllib.parse.urlsplit(file_url).path
             filename = posixpath.basename(path)
 
             ctx = None
-            if urlparse.urlparse(file_url).scheme == 'https':
+            if urllib.parse.urlparse(file_url).scheme == 'https':
                 if validate_server:
                     if not ca_cert:
                         if self.debug:
@@ -383,7 +392,7 @@ class ZtpHelpers(object):
                 output_list.append(fixed_line)
                 if "% Invalid input detected at '^' marker." in fixed_line:
                     status = "error"
-                output = filter(None, output_list)  # Removing empty items
+                output = [_f for _f in output_list if _f]  # Removing empty items
 
         if self.debug:
             self.logger.debug("Exec command output is %s" % output)
@@ -443,7 +452,7 @@ class ZtpHelpers(object):
                 output_list.append(fixed_line)
                 if "% Invalid input detected at '^' marker." in fixed_line:
                     status = "error"
-                output = filter(None, output_list)  # Removing empty items
+                output = [_f for _f in output_list if _f]  # Removing empty items
 
         if self.debug:
             self.logger.debug("Admin command output is %s" % output)
