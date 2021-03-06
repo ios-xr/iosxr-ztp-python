@@ -29,11 +29,17 @@ from urllib.request import Request, urlopen
 
 from .error import ErrorCode
 
-from ztp_netconf import *
+try:
+    from ztp_netconf import *
+except Exception as e:
+    print('Error importing ztp_netconf', e)
 
 
-libc = cdll.LoadLibrary('libc.so.6')
-_setns = libc.setns
+try:
+    libc = cdll.LoadLibrary('libc.so.6')
+    _setns = libc.setns
+except Exception as e:
+    print('Error loading libc', e)
 
 CLONE_NEWNET = 0x40000000
 
@@ -56,8 +62,8 @@ class ZtpHelpers(object):
         except:
             self.syslog_port = None
         self.syslog_file = syslog_file
+        self.logger = self._get_debug_logger()
         self.setup_syslog()
-        self.setup_debug_logger()
         self.debug = False
 
         #initialize netconf related variables
@@ -125,7 +131,7 @@ class ZtpHelpers(object):
         # and interfaces in the XR linux shell converge.
         time.sleep(30)
 
-    def setup_debug_logger(self):
+    def _get_debug_logger(self):
         """Setup the debug logger to throw debugs to stdout/stderr
         """
 
@@ -140,7 +146,7 @@ class ZtpHelpers(object):
             ch.setFormatter(formatter)
             logger.addHandler(ch)
 
-        self.logger = logger
+        return logger
 
     def _read_in_chunks(self, file_object, chunk_size):
         """generator to read the file in chunks
@@ -296,6 +302,9 @@ class ZtpHelpers(object):
         """Setup up the Syslog logger for remote or local operation
            IMPORTANT:  This logger must be set up in the correct vrf.
         """
+        if self.syslog_server is None:
+            self.logger.info('Syslog server details not provided')
+            return
 
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)

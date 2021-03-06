@@ -38,3 +38,10 @@ class ErrorCode(_AutoNumber):
 
     def __repr__(self):
         return str(self)
+
+class ExecError(Exception):
+    def __init__(self, cmd, error):
+        if isinstance(cmd, list):
+            cmd = ' '.join(cmd)
+        self.message = 'Error: {} encountered while executing command: {}'.format(error, cmd)
+        super(ExecError, self).__init__(self.message)
