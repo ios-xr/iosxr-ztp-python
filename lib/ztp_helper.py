@@ -45,7 +45,7 @@ CLONE_NEWNET = 0x40000000
 
 
 class ZtpHelpers(object):
-    def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None):
+    def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None, debug=False):
         """__init__ constructor
            :param syslog_server: IP address of reachable Syslog Server
            :param syslog_port: Port for the reachable syslog server
@@ -63,8 +63,8 @@ class ZtpHelpers(object):
             self.syslog_port = None
         self.syslog_file = syslog_file
         self.logger = self._get_debug_logger()
-        self.setup_syslog()
-        self.debug = False
+        self.syslogger = self.setup_syslog()
+        self.debug = debug
 
         #initialize netconf related variables
         self.netconf = self.ZtpNetconfHelper(self.logger)
@@ -304,7 +304,7 @@ class ZtpHelpers(object):
         """
         if self.syslog_server is None:
             self.logger.info('Syslog server details not provided')
-            return
+            return None
 
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)
@@ -342,7 +342,7 @@ class ZtpHelpers(object):
                 handler.formatter = formatter
                 logger.addHandler(handler)
 
-            self.syslogger = logger
+            return logger
 
     def xrcmd(self, cmd=None):
         """Issue an IOS-XR exec command and obtain the output
