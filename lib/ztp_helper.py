@@ -55,6 +55,9 @@ class ZtpHelpers(object):
            :type syslog_file:str
         """
 
+        self.logger = self._get_debug_logger()
+        self.debug = debug
+
         self.vrf = "global-vrf"
         self.syslog_server = syslog_server
         try:
@@ -62,9 +65,7 @@ class ZtpHelpers(object):
         except:
             self.syslog_port = None
         self.syslog_file = syslog_file
-        self.logger = self._get_debug_logger()
         self.syslogger = self.setup_syslog()
-        self.debug = debug
 
         #initialize netconf related variables
         self.netconf = self.ZtpNetconfHelper(self.logger)
@@ -302,10 +303,6 @@ class ZtpHelpers(object):
         """Setup up the Syslog logger for remote or local operation
            IMPORTANT:  This logger must be set up in the correct vrf.
         """
-        if self.syslog_server is None:
-            self.logger.info('Syslog server details not provided')
-            return None
-
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)
 
