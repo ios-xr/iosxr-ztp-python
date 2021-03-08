@@ -229,7 +229,7 @@ class ZtpHelpers(object):
                 # Open our local file for writing
                 destination_path = os.path.join(destination_folder, filename)
 
-                with open(destination_path, "w") as local_file:
+                with open(destination_path, "wb") as local_file:
                     for chunk in self._read_in_chunks(f, chunk_size):
                         local_file.write(chunk)
                         hash_md5.update(chunk)

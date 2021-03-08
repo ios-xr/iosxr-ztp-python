@@ -18,5 +18,8 @@ class TestZtpHelpers(unittest.TestCase):
     @mock.patch(MockZTPHelper.setns_method)
     def test_download_file(self, mock_get_netns_path, mock_setns):
         zh = ZtpHelpers()
-        zh.download_file(file_url='https://github.com/ios-xr/iosxr-ztp-python/blob/master/lib/ztp_helper.py',
-                         destination_folder='.')
+        dwnld_file = 'https://raw.githubusercontent.com/ios-xr/iosxr-ztp-python/master/lib/ztp_helper.py'
+        ret = zh.download_file(file_url=dwnld_file,
+                         destination_folder='test/',validate_server=False)
+
+        print(ret)
