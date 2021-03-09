@@ -25,4 +25,6 @@ class TestZtpHelpers(unittest.TestCase):
                          destination_folder=download_dir ,validate_server=False)
         self.assertEqual(ret['status'], 'success')
         os.remove(os.path.join(ret['folder'], ret['filename']))
-        print(ret)
+
+    def test_xrcmd(self):
+        pass 

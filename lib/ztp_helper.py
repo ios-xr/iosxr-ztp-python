@@ -27,7 +27,7 @@ from ctypes import cdll
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from .error import ErrorCode
+from .error import ErrorCode, ExecError
 
 try:
     from ztp_netconf import *
@@ -148,6 +148,41 @@ class ZtpHelpers(object):
             logger.addHandler(ch)
 
         return logger
+
+    def execShellCmd(cmd,
+                    shell=False,
+                    timeout=None,
+                    env=None,
+                    executable=None,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE):
+        error= None
+        errorMessage = None
+        try:
+            proc = subprocess.run(cmd,
+                            shell=shell,
+                            env=env,
+                            executable=executable,
+                            stdout=stdout,
+                            stderr=stderr,
+                            timeout=timeout,
+                            check=False)
+        except subprocess.TimeoutExpired as e:
+            return ExecError(cmd=cmd, error=e), ''
+        except subprocess.SubprocessError as e:
+            return ExecError(cmd=cmd, error=e), ''
+
+        output = proc.stdout
+        errorMessage = proc.stderr
+        output = output.decode().strip() if output else ''
+        errorMessage = errorMessage.decode().strip() if e else ''
+
+        if proc.returncode != 0:
+            if not errorMessage:
+                errorMessage = 'Unknown error occurred with output: %s' % output
+            error = ExecError(cmd=cmd, error=errorMessage)
+
+        return output, error
 
     def _read_in_chunks(self, file_object, chunk_size):
         """generator to read the file in chunks
