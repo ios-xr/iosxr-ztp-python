@@ -476,21 +476,52 @@ class ZtpHelpers(object):
         if process.returncode:
             status = "error"
             output = "Failed to get command output"
-        else:
-            output_list = []
-            output = ""
+            return {"status": status, "output": output}
 
-            for line in out.splitlines():
-                fixed_line = line.replace("\n", " ").strip()
-                output_list.append(fixed_line)
-                if "% Invalid input detected at '^' marker." in fixed_line:
-                    status = "error"
-                output = [_f for _f in output_list if _f]  # Removing empty items
+        output_list = []
+        output = ""
+
+        for line in out.splitlines():
+            fixed_line = line.replace("\n", " ").strip()
+            output_list.append(fixed_line)
+            if "% Invalid input detected at '^' marker." in fixed_line:
+                status = "error"
+            output = [_f for _f in output_list if _f]  # Removing empty items
 
         if self.debug:
             self.logger.debug("Admin command output is %s" % output)
 
         return {"status": status, "output": output}
+
+    def _get_last_commit_id(self):
+        ## Config commit successful. Let's return the last config change
+        exec_cmd = "show configuration commit changes last 1"
+        config_change = self.xrcmd({"exec_cmd": exec_cmd})
+        if config_change["status"] == "error":
+            output = "Failed to fetch last config change"
+        else:
+            output = config_change["output"]
+
+        if self.debug:
+            self.logger.debug(
+                "Config apply through file successful, last change = %s" %
+                output)
+
+        return output
+
+    def _get_failed_configs(self):
+        exec_cmd = "show configuration failed"
+        config_failed = self.xrcmd({"exec_cmd": exec_cmd})
+        if config_failed["status"] == "error":
+            output = "Failed to fetch config failed output"
+        else:
+            output = config_failed["output"]
+
+        if self.debug:
+            self.logger.debug(
+                "Config replace through file failed, output = %s" % output)
+
+        return output
 
     def xrapply(self, filename=None, reason=None, extra_auth=False, atomic=False):
         """Apply Configuration to XR using a file
@@ -553,31 +584,12 @@ class ZtpHelpers(object):
         if process.returncode:
             ## Config commit failed.
             status = "error"
-            exec_cmd = "show configuration failed"
-            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_failed["status"] == "error":
-                output = "Failed to fetch config failed output"
-            else:
-                output = config_failed["output"]
-
-            if self.debug:
-                self.logger.debug(
-                    "Config apply through file failed, output = %s" % output)
+            output = self._get_failed_configs()
             return {"status": status, "output": output}
-        else:
-            ## Config commit successful. Let's return the last config change
-            exec_cmd = "show configuration commit changes last 1"
-            config_change = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_change["status"] == "error":
-                output = "Failed to fetch last config change"
-            else:
-                output = config_change["output"]
 
-            if self.debug:
-                self.logger.debug(
-                    "Config apply through file successful, last change = %s" %
-                    output)
-            return {"status": status, "output": output}
+        output = self._get_last_commit_id()
+
+        return {"status": status, "output": output}
 
     def xrapply_string(self, cmd=None, reason=None):
         """Apply Configuration to XR using  a single line string
@@ -614,32 +626,12 @@ class ZtpHelpers(object):
         if process.returncode:
             ## Config commit failed.
             status = "error"
-            exec_cmd = "show configuration failed"
-            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_failed["status"] == "error":
-                output = "Failed to fetch config failed output"
-            else:
-                output = config_failed["output"]
-            if self.debug:
-                self.logger.debug(
-                    "Config apply for config string failed, output = %s" %
-                    output)
+            output = self._get_failed_configs()
             return {"status": status, "output": output}
 
-        else:
-            ## Config commit successful. Let's return the last config change
-            exec_cmd = "show configuration commit changes last 1"
-            config_change = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_change["status"] == "error":
-                output = "Failed to fetch last config change"
-            else:
-                output = config_change["output"]
+        output = self._get_last_commit_id()
 
-            if self.debug:
-                self.logger.debug(
-                    "Config apply for string successful, last change = %s" %
-                    output)
-            return {"status": status, "output": output}
+        return {"status": status, "output": output}
 
     def xrreplace(self, filename=None, extra_auth=False):
         """Replace XR Configuration using a file
@@ -689,31 +681,11 @@ class ZtpHelpers(object):
         if process.returncode:
             ## Config commit failed.
             status = "error"
-            exec_cmd = "show configuration failed"
-            config_failed = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_failed["status"] == "error":
-                output = "Failed to fetch config failed output"
-            else:
-                output = config_failed["output"]
-
-            if self.debug:
-                self.logger.debug(
-                    "Config replace through file failed, output = %s" % output)
+            output = self._get_failed_configs()
             return {"status": status, "output": output}
-        else:
-            ## Config commit successful. Let's return the last config change
-            exec_cmd = "show configuration commit changes last 1"
-            config_change = self.xrcmd({"exec_cmd": exec_cmd})
-            if config_change["status"] == "error":
-                output = "Failed to fetch last config change"
-            else:
-                output = config_change["output"]
 
-            if self.debug:
-                self.logger.debug(
-                    "Config replace through file successful, last change = %s" %
-                    output)
-            return {"status": status, "output": output}
+        output = self._get_last_commit_id()
+        return {"status": status, "output": output}
 
     def operns_if_name_to_xrnns(self, ifName, sysdb=False):
         """Convert interface name from operns to xrnns format
