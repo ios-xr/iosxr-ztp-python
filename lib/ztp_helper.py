@@ -164,9 +164,9 @@ class ZtpHelpers(object):
                             timeout=timeout,
                             check=False)
         except subprocess.TimeoutExpired as e:
-            return ExecError(cmd=cmd, error=e), ''
+            return None, ExecError(cmd=cmd, error=e)
         except subprocess.SubprocessError as e:
-            return ExecError(cmd=cmd, error=e), ''
+            return None, ExecError(cmd=cmd, error=e)
 
         output = proc.stdout
         errorMessage = proc.stderr
