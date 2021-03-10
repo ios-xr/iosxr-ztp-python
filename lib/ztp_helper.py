@@ -17,15 +17,20 @@ import hashlib
 import logging
 import logging.handlers
 import os
-import posixpath
 import re
 import ssl
 import subprocess
 import time
-import urllib.parse
+
 from ctypes import cdll
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+try:
+    import urllib.parse as urlparser
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+except:
+    import urlparse as urlparser
+    from urllib2 import Request, urlopen, URLError, HTTPError
 
 from .error import ErrorCode, ExecError
 
@@ -255,11 +260,10 @@ class ZtpHelpers(object):
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)
 
-            path = urllib.parse.urlsplit(file_url).path
-            filename = posixpath.basename(path)
+            path = urlparser.urlsplit(file_url).path.basename(path)
 
             ctx = None
-            if urllib.parse.urlparse(file_url).scheme == 'https':
+            if urlparser.urlparse(file_url).scheme == 'https':
                 if validate_server:
                     if not ca_cert:
                         self.logger.info("Certificate not provided to validate server")
