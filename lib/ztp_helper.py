@@ -20,15 +20,16 @@ import os
 import re
 import ssl
 import subprocess
-import time
+import time, posixpath
 
 from ctypes import cdll
 
-try:
+try: #for python 3
     import urllib.parse as urlparser
     from urllib.error import HTTPError, URLError
     from urllib.request import Request, urlopen
-except:
+except ImportError:  #for python 2
+    print('running on python2')
     import urlparse as urlparser
     from urllib2 import Request, urlopen, URLError, HTTPError
 
@@ -260,7 +261,8 @@ class ZtpHelpers(object):
         with open(self.get_netns_path(nsname=self.vrf)) as fd:
             self.setns(fd, CLONE_NEWNET)
 
-            path = urlparser.urlsplit(file_url).path.basename(path)
+            path = urlparser.urlsplit(file_url).path
+            filename = posixpath.basename(path)
 
             ctx = None
             if urlparser.urlparse(file_url).scheme == 'https':
