@@ -48,37 +48,19 @@ except Exception as e:
 
 CLONE_NEWNET = 0x40000000
 
-from enum import Enum
-class _AutoNumber(Enum):
-    def __new__(cls):
-        value = len(cls.__members__) + 1
-        obj = object.__new__(cls)
-        obj._value_ = value
-        return obj
 
-class ErrorCode(_AutoNumber):
+class ErrorCode:
     # Generic errors
-    INVALID_RESPONSE = ()
-    INVALID_INPUT = ()
-    INVALID_DATA = ()
-    INVALID_COMMAND = ()
-    COMMAND_NOT_SPECIFIED = ()
-    INVALID_INPUT_TYPE = ()
-    INVALID_CA_CERTIFICATE =()
+    INVALID_COMMAND = 1
+    COMMAND_NOT_SPECIFIED = 2
+    INVALID_INPUT_TYPE = 3
 
     # Config Errors
-    INVALID_CONFIG_PATH = ()
+    INVALID_CONFIG_PATH = 4
 
     # HTTP Errors
-    HTTP_POST_REQUEST_FAILED = ()
-    HTTP_GET_REQUEST_FAILED = ()
-    HTTP_OPERATION_TIMEDOUT = ()
-    DOWNLOAD_FAILED = ()
-    DOWNLOAD_FAILED_MD5_MISMATCH = ()
-
-    # Setns Errors
-    FAILED_READING_FD = ()
-    FAILED_SWITCHING_NS = ()
+    DOWNLOAD_FAILED = 5
+    DOWNLOAD_FAILED_MD5_MISMATCH = 6
 
     def __str__(self):
         return str(self.name).lower().replace('_', '-')
@@ -483,12 +465,11 @@ class ZtpHelpers(object):
         cmd = "source /pkg/bin/ztp_helper.sh && echo -ne \"" + cmd[
             "prompt_response"] + " \" | xrcmd " + "\"" + cmd["exec_cmd"] + "\""
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        out, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
-        if process.returncode:
+        if err:
             status = "error"
-            output = "Failed to get command output"
+            output = err
         else:
             output_list = []
             output = ""
