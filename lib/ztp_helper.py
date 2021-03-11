@@ -33,7 +33,6 @@ except ImportError:  #for python 2
     import urlparse as urlparser
     from urllib2 import Request, urlopen, URLError, HTTPError
 
-from .error import ErrorCode, ExecError
 
 try:
     from ztp_netconf import *
@@ -49,6 +48,47 @@ except Exception as e:
 
 CLONE_NEWNET = 0x40000000
 
+from enum import Enum
+class _AutoNumber(Enum):
+    def __new__(cls):
+        value = len(cls.__members__) + 1
+        obj = object.__new__(cls)
+        obj._value_ = value
+        return obj
+
+class ErrorCode(_AutoNumber):
+    # Generic errors
+    INVALID_RESPONSE = ()
+    INVALID_INPUT = ()
+    INVALID_DATA = ()
+    INVALID_COMMAND = ()
+    COMMAND_NOT_SPECIFIED = ()
+    INVALID_INPUT_TYPE = ()
+    INVALID_CA_CERTIFICATE =()
+
+    # Config Errors
+    INVALID_CONFIG_PATH = ()
+
+    # HTTP Errors
+    HTTP_POST_REQUEST_FAILED = ()
+    HTTP_GET_REQUEST_FAILED = ()
+    HTTP_OPERATION_TIMEDOUT = ()
+    DOWNLOAD_FAILED = ()
+    DOWNLOAD_FAILED_MD5_MISMATCH = ()
+
+    # Setns Errors
+    FAILED_READING_FD = ()
+    FAILED_SWITCHING_NS = ()
+
+    def __str__(self):
+        return str(self.name).lower().replace('_', '-')
+
+class ExecError(Exception):
+    def __init__(self, cmd, error):
+        if isinstance(cmd, list):
+            cmd = ' '.join(cmd)
+        self.message = 'Error: {} encountered while executing command: {}'.format(error, cmd)
+        super(ExecError, self).__init__(self.message)
 
 class ZtpHelpers(object):
     def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None, debug=False):
