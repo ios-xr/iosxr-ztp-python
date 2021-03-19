@@ -51,19 +51,18 @@ CLONE_NEWNET = 0x40000000
 
 class ErrorCode:
     # Generic errors
-    INVALID_COMMAND = 1
-    COMMAND_NOT_SPECIFIED = 2
-    INVALID_INPUT_TYPE = 3
+    INVALID_COMMAND = "Invalid Command"
+    COMMAND_NOT_SPECIFIED = "Command Not Specified"
+    INVALID_INPUT_TYPE = "Invalid Input Type"
 
     # Config Errors
-    INVALID_CONFIG_PATH = 4
+    INVALID_CONFIG_FILE = "Invalid Configuration File"
+    CONFIG_PATH_NOT_PROVIDED = "Invalid Configuration Path"
 
     # HTTP Errors
-    DOWNLOAD_FAILED = 5
-    DOWNLOAD_FAILED_MD5_MISMATCH = 6
+    DOWNLOAD_FAILED = "Download Failed"
+    DOWNLOAD_FAILED_MD5_MISMATCH = "Download failed with MD5 Mismatch"
 
-    def __str__(self):
-        return str(self.name).lower().replace('_', '-')
 
 class ExecError(Exception):
     def __init__(self, cmd, error):
@@ -71,6 +70,7 @@ class ExecError(Exception):
             cmd = ' '.join(cmd)
         self.message = 'Error: {} encountered while executing command: {}'.format(error, cmd)
         super(ExecError, self).__init__(self.message)
+
 
 class ZtpHelpers(object):
     def __init__(self, syslog_server=None, syslog_port=None, syslog_file=None, debug=False):
@@ -177,34 +177,36 @@ class ZtpHelpers(object):
 
         return logger
 
-    def _exec_shell_cmd(self, cmd, shell=False, timeout=None, env=None,
-                    executable=None, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE):
+    def _exec_shell_cmd(self, cmd, shell=True, timeout=None, env=None,
+                    executable=None, std_out=subprocess.PIPE,
+                    std_err=subprocess.PIPE):
+        invalid_command = "Invalid input detected at '^' marker."
         error= None
         errorMessage = None
-        try:
-            proc = subprocess.run(cmd,
-                            shell=shell,
-                            env=env,
-                            executable=executable,
-                            stdout=stdout,
-                            stderr=stderr,
-                            timeout=timeout,
-                            check=False)
-        except subprocess.TimeoutExpired as e:
-            return None, ExecError(cmd=cmd, error=e)
-        except subprocess.SubprocessError as e:
-            return None, ExecError(cmd=cmd, error=e)
+        proc = subprocess.Popen(cmd, stdout=std_out, stderr=std_err, shell=shell)
+        out, err = proc.communicate()
 
-        output = proc.stdout
-        errorMessage = proc.stderr
-        output = output.decode().strip() if output else ''
-        errorMessage = errorMessage.decode().strip() if e else ''
+
+        out = out.decode().strip() if out else ''
+        errorMessage = err.decode().strip() if err else ''
+        output = list()
+
+        if errorMessage:
+            error = ExecError(cmd=cmd, error=errorMessage)
+            return output, error
 
         if proc.returncode != 0:
             if not errorMessage:
-                errorMessage = 'Unknown error occurred with output: %s' % output
+                errorMessage = 'Unknown error occurred with output: %s' % out
             error = ExecError(cmd=cmd, error=errorMessage)
+
+        for line in out.splitlines():
+            l = line.replace("\n", " ").strip()
+            output.append(l)
+            if invalid_command in l:
+                error = ExecError(cmd=cmd, error=invalid_command)
+
+        output = [_f for _f in output if _f]  # Removing empty items
 
         return output, error
 
@@ -465,21 +467,11 @@ class ZtpHelpers(object):
         cmd = "source /pkg/bin/ztp_helper.sh && echo -ne \"" + cmd[
             "prompt_response"] + " \" | xrcmd " + "\"" + cmd["exec_cmd"] + "\""
 
-        out, err = self._exec_shell_cmd(cmd=cmd, shell=True)
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
         if err:
             status = "error"
             output = err
-        else:
-            output_list = []
-            output = ""
-
-            for line in out.splitlines():
-                fixed_line = line.replace("\n", " ").strip()
-                output_list.append(fixed_line)
-                if "% Invalid input detected at '^' marker." in fixed_line:
-                    status = "error"
-                output = [_f for _f in output_list if _f]  # Removing empty items
 
         if self.debug:
             self.logger.debug("Exec command output is %s" % output)
@@ -504,8 +496,7 @@ class ZtpHelpers(object):
         if not isinstance(cmd, dict):
             return {
                 "status": "error",
-                "output":
-                ErrorCode.INVALID_INPUT_TYPE
+                "output": ErrorCode.INVALID_INPUT_TYPE
             }
 
         status = "success"
@@ -523,23 +514,10 @@ class ZtpHelpers(object):
             "prompt_response"] + " \" | admincmd " + "\"" + cmd[
                 "exec_cmd"] + "\""
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
-        if process.returncode:
-            status = "error"
-            output = "Failed to get command output"
-            return {"status": status, "output": output}
-
-        output_list = []
-        output = ""
-
-        for line in out.splitlines():
-            fixed_line = line.replace("\n", " ").strip()
-            output_list.append(fixed_line)
-            if "% Invalid input detected at '^' marker." in fixed_line:
-                status = "error"
-            output = [_f for _f in output_list if _f]  # Removing empty items
+        if err:
+            return {"status": "error", "output": err}
 
         if self.debug:
             self.logger.debug("Admin command output is %s" % output)
@@ -574,18 +552,18 @@ class ZtpHelpers(object):
         if filename is None:
             return {
                 "status": "error",
-                "output": "No config file provided for xrapply"
+                "output": ErrorCode.CONFIG_PATH_NOT_PROVIDED
             }
 
         status = "success"
 
         try:
+            with open(filename, 'r') as config_file:
+                data = config_file.read()
             if self.debug:
-                with open(filename, 'r') as config_file:
-                    data = config_file.read()
                 self.logger.debug("Config File content to be applied %s" % data)
         except Exception as e:
-            return {"status": "error", "output": "Invalid config file provided"}
+            return {"status": "error", "output": "{}:{}".format(ErrorCode.INVALID_CONFIG_FILE, e)}
 
         if reason is not None:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_with_reason \"" + str(
@@ -599,16 +577,12 @@ class ZtpHelpers(object):
         else:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply " + filename
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
-        # Check if the commit failed
-
-        if process.returncode:
+        if err:
             ## Config commit failed.
-            status = "error"
             output = self._get_failed_configs()
-            return {"status": status, "output": output}
+            return {"status": "error", "output": output}
 
         output = self._get_last_commit_id()
 
@@ -631,7 +605,7 @@ class ZtpHelpers(object):
         """
 
         if cmd is None:
-            return {"status": "error", "output": "Config command not specified"}
+            return {"status": "error", "output": ErrorCode.COMMAND_NOT_SPECIFIED}
 
         status = "success"
 
@@ -643,10 +617,9 @@ class ZtpHelpers(object):
         else:
             cmd = "source /pkg/bin/ztp_helper.sh && xrapply_string \"" + cmd + "\""
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
-        if process.returncode:
+        if err:
             ## Config commit failed.
             status = "error"
             output = self._get_failed_configs()
@@ -679,33 +652,28 @@ class ZtpHelpers(object):
         if filename is None:
             return {
                 "status": "error",
-                "output": "No config file provided for xrreplace"
+                "output": ErrorCode.CONFIG_PATH_NOT_PROVIDED
             }
-
         status = "success"
 
         try:
+            with open(filename, 'r') as config_file:
+                data = config_file.read()
             if self.debug:
-                with open(filename, 'r') as config_file:
-                    data = config_file.read()
                 self.logger.debug("Config File content to be applied %s" % data)
         except Exception as e:
-            return {"status": "error", "output": "Invalid config file provided"}
+            return {"status": "error", "output": "{}:{}".format(ErrorCode.INVALID_CONFIG_FILE, e)}
 
         if extra_auth:
             cmd = "source /pkg/bin/ztp_helper.sh && xrreplace_with_extra_auth " + filename
         else:
             cmd = "source /pkg/bin/ztp_helper.sh && xrreplace " + filename
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
-        # Check if the commit failed
-        if process.returncode:
-            ## Config commit failed.
-            status = "error"
+        if err:
             output = self._get_failed_configs()
-            return {"status": status, "output": output}
+            return {"status": "error", "output": output}
 
         output = self._get_last_commit_id()
         return {"status": status, "output": output}
@@ -748,20 +716,18 @@ class ZtpHelpers(object):
 
         cmd = "source /pkg/bin/ztp_helper.sh && ztp_release_dhcp_ip"
 
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-        out, err = process.communicate()
+        output, err = self._exec_shell_cmd(cmd=cmd, shell=True)
 
         # Check if the release failed
-        if process.returncode:
+        if err:
             ## Release failed.
             status = "error"
             output = "Failed to release dhcp IP address"
-            if self.debug:
-                self.logger.debug("Error releasing dhcp IP address")
+            self.logger.error("Error releasing dhcp IP address. Error: {}".format(err))
         else:
             ## Release successful.
             status = "success"
-            output = ""
+            output = None
             if self.debug:
                 self.logger.debug("Done releasing dhcp IP address")
 
@@ -818,7 +784,7 @@ class ZtpHelpers(object):
 
             self.logger.debug("netconf init attempt: %s" % retry_count)
             ret = self.ztpHelpers.xrapply(self.configFile)
-            while ((ret['status'] is 'error') and (retry_count <= 3)):
+            while ((ret['status'] is 'error') and (retry_count < 3)):
                 self.logger.debug("netconf init attempt: %s" % retry_count)
                 ret = self.ztpHelpers.xrapply(self.configFile)
                 retry_count += 1
