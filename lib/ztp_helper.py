@@ -468,6 +468,10 @@ class ZtpHelpers(object):
            :type filename: str
            :type reason: str
            :type extra_auth: bool
+           :param atomic: When set to True will do atomic commits.
+                          best-effort commits are done by default.
+                          In case of config failures the entire chunk
+                          of configs would not be applied.
            :return: Dictionary specifying the effect of the config change
                      { 'status' : 'error/success', 'output': 'exec command based on status'}
                      In case of Error:  'output' = 'show configuration failed'
