@@ -24,8 +24,15 @@ import subprocess
 import time
 import urllib.parse
 from ctypes import cdll
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+try: #for python 3
+    import urllib.parse as urlparser
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+except ImportError:  #for python 2
+    print('running on python2')
+    import urlparse as urlparser
+    from urllib2 import Request, urlopen, URLError, HTTPError
 
 from ztp_netconf import *
 
