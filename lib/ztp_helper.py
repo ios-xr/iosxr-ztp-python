@@ -3,6 +3,7 @@
    author: akshshar@cisco.com
            venkatg@cisco.com
            arhashem@cisco.com
+           nmudivar@cisco.com
 
    ztp_helper.py
 
@@ -17,11 +18,11 @@ import hashlib
 import logging
 import logging.handlers
 import os
+import posixpath
 import re
 import ssl
 import subprocess
-import time, posixpath
-
+import time
 from ctypes import cdll
 
 try: #for python 3
@@ -31,7 +32,7 @@ try: #for python 3
 except ImportError:  #for python 2
     print('running on python2')
     import urlparse as urlparser
-    from urllib2 import Request, urlopen, URLError, HTTPError
+    from urllib2 import HTTPError, Request, URLError, urlopen
 
 
 try:
