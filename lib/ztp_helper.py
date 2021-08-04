@@ -178,23 +178,19 @@ class ZtpHelpers(object):
 
         return logger
 
-    def _exec_shell_cmd(self, cmd, shell=True, timeout=None, env=None,
-                    executable=None, std_out=subprocess.PIPE,
-                    std_err=subprocess.PIPE):
+    def _exec_shell_cmd(self, cmd, shell=True, timeout=60,
+                            std_out=subprocess.PIPE,
+                            std_err=subprocess.STDOUT):
         invalid_command = "Invalid input detected at '^' marker."
         error= None
         errorMessage = None
-        proc = subprocess.Popen(cmd, stdout=std_out, stderr=std_err, shell=shell)
-        out, err = proc.communicate()
 
+        proc = subprocess.Popen(cmd, stdout=std_out, stderr=std_err, shell=shell)
+        out, err = proc.communicate(timeout=timeout)
 
         out = out.decode().strip() if out else ''
         errorMessage = err.decode().strip() if err else ''
         output = list()
-
-        if errorMessage:
-            error = ExecError(cmd=cmd, error=errorMessage)
-            return output, error
 
         if proc.returncode != 0:
             if not errorMessage:
@@ -785,13 +781,13 @@ class ZtpHelpers(object):
 
             self.logger.debug("netconf init attempt: %s" % retry_count)
             ret = self.ztpHelpers.xrapply(self.configFile)
-            while ((ret['status'] is 'error') and (retry_count < 3)):
+            while ((ret['status'] == 'error') and (retry_count < 3)):
                 self.logger.debug("netconf init attempt: %s" % retry_count)
                 ret = self.ztpHelpers.xrapply(self.configFile)
                 retry_count += 1
 
             os.remove(self.configFile)
-            if (ret['status'] is 'error' and retry_count == 3):
+            if (ret['status'] == 'error' and retry_count == 3):
                 return False
 
             tries = 12
